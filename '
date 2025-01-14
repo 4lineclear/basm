@@ -1,8 +1,4 @@
-use crate::{
-    span::{BSpan, LSpan},
-    util::AsBSpan,
-    Comment, DocComment, DocStyle,
-};
+use crate::{span::BSpan, util::AsBSpan, Comment, DocComment, DocStyle};
 
 use super::{
     Cursor,
@@ -18,27 +14,30 @@ pub mod error;
 mod test;
 
 pub enum LineItem {
-    Unit(Unit),
+    Ins(Instruction),
+    Arg(Argument),
     Other(Lexeme),
 }
 
-// /// A single item within a list
-// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-// pub struct Instruction {
-//     // arguments: TSpan,
-//     span: BSpan,
-// }
-//
-/// An instruction's argument
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Unit {
+/// A single item within a list
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct Instruction {
+    // arguments: TSpan,
     span: BSpan,
-    kind: UnitKind,
 }
 
 /// An instruction's argument
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum UnitKind {
+pub struct Argument {
+    span: BSpan,
+    kind: ArgKind,
+}
+
+/// An instruction's argument
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ArgKind {
+    // #[default]
+    // None,
     Ident,
     Literal {
         kind: LiteralKind,
@@ -50,13 +49,12 @@ pub enum UnitKind {
 
 pub fn parse(input: &str) -> (Vec<LineItem>, Lines) {
     let mut parser = Lines::new(input);
-    (parser.all_lis(), parser)
+    (parser.all_lines(), parser)
 }
 
 #[derive(Default)]
 pub struct Lines<'a> {
     ls: bool,
-    lines: u32,
     // curr: Option<(Lexeme, BSpan)>,
     pub cursor: Cursor<'a>,
     pub comments: Vec<Comment>,
@@ -164,73 +162,58 @@ impl<'a> Lines<'a> {
     }
 }
 
-// pub struct Line {
-//     pub units: Box<[Unit]>,
-// }
-
 impl Lines<'_> {
-    // pub fn line(&mut self) -> Option<Line> {
-    //     let mut units = Vec::new();
-    //     loop {
-    //         let li = self.next_li();
-    //         match li {
-    //             // LineItem::Ins(instruction) => todo!(),
-    //             LineItem::Unit(unit) => units.push(unit),
-    //             LineItem::Other(lexeme) => todo!(),
-    //             LineItem::Other(Lexeme { kind: Eof, .. }) => break,
-    //             LineItem::Other(Lexeme { kind: NewLine, .. }) => {}
-    //         }
-    //     }
-    //     Some(Line {
-    //         units: units.into(),
-    //     })
-    //     // std::iter::from_fn(|| Some(self.next_li()))
-    //     //     .take_while(|li| !matches!(li, LineItem::Other(Lexeme { kind: Eof, .. })))
-    //     //     .filter(|li| !matches!(li, LineItem::Other(Lexeme { kind: NewLine, .. })))
-    //     //     .collect()
-    // }
-    pub fn all_lis(&mut self) -> Vec<LineItem> {
-        std::iter::from_fn(|| Some(self.next_li()))
-            .take_while(|li| !matches!(li, LineItem::Other(Lexeme { kind: Eof, .. })))
-            .filter(|li| !matches!(li, LineItem::Other(Lexeme { kind: NewLine, .. })))
-            .collect()
+    pub fn all_lines(&mut self) -> Vec<LineItem> {
+        let mut line_items = Vec::new();
+        loop {
+            match self.next() {
+                Ok(li) => line_items.push(li),
+                Err(ParseEnd::NewLine) => (),
+                Err(ParseEnd::Eof) => break,
+            }
+        }
+        line_items
     }
-    pub fn next_li(&mut self) -> LineItem {
+    pub fn next(&mut self) -> LineItem {
         let r = self.try_next();
         match &r {
-            LineItem::Unit(_) => self.ls = false,
-            LineItem::Other(lex) => self.ls = lex.kind == NewLine,
+            Ok(LineItem::Ins(_)) => self.ls = false,
+            Err(ParseEnd::NewLine) => self.ls = true,
+            _ => (),
         }
         r
     }
-    pub fn try_next(&mut self) -> LineItem {
-        self.unit()
-            .map(LineItem::Unit)
-            .unwrap_or_else(LineItem::Other)
+    pub fn try_next(&mut self) -> ParseRes<LineItem> {
+        Ok(if self.ls {
+            self.instruction()?.map(LineItem::Ins)
+        } else {
+            self.argument()?.map(LineItem::Arg)
+        }
+        .unwrap_or_else(LineItem::Other))
     }
-    // fn instruction(&mut self) -> Result<Unit, Lexeme> {
-    //     let (lex, span) = self.until_non_wc();
-    //     let inst = Instruction { span };
-    //     match lex.kind {
-    //         Ident => Ok(inst),
-    //         Eof | NewLine => Err(lex),
-    //         _ => {
-    //             self.handle_wc(lex);
-    //             self.err_expected(span, [Ident]);
-    //             Err(lex)
-    //         }
-    //     }
-    // }
-    fn unit(&mut self) -> Result<Unit, Lexeme> {
+    fn instruction(&mut self) -> Result<Instruction, Lexeme> {
+        let (lex, span) = self.until_non_wc();
+        let inst = Instruction { span };
+        match lex.kind {
+            Ident => Ok(inst),
+            Eof | NewLine => Err(lex),
+            _ => {
+                self.handle_wc(lex);
+                self.err_expected(span, [Ident]);
+                Err(lex)
+            }
+        }
+    }
+    fn argument(&mut self) -> Result<Argument, Lexeme> {
         let (lex, span) = self.until_non_wc();
         match lex.kind {
-            Ident => Ok(Unit {
+            Ident => Ok(Argument {
                 span,
-                kind: UnitKind::Ident,
+                kind: ArgKind::Ident,
             }),
-            Literal { kind, suffix_start } => Ok(Unit {
+            Literal { kind, suffix_start } => Ok(Argument {
                 span,
-                kind: UnitKind::Literal { kind, suffix_start },
+                kind: ArgKind::Literal { kind, suffix_start },
             }),
             Dot | Colon | Comma | Eof | NewLine => Err(lex),
             _ => {

@@ -3,6 +3,7 @@ use self::span::BSpan;
 
 // TODO: consider making the lexer level it's own crate.
 pub mod lexer;
+pub mod parser;
 pub mod span;
 pub mod util;
 

@@ -1,3 +1,3 @@
 # basm
 
-basm is emulates assembly language, mostly to aid in learning.
+basm emulates assembly language, mostly to aid in learning.

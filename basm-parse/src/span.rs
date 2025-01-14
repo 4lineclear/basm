@@ -2,6 +2,19 @@
 
 use std::ops::Range;
 
+/// A line span
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LSpan {
+    /// inclusive
+    pub line_from: u32,
+    /// exclusive
+    pub line_to: u32,
+    /// inclusive
+    pub from: u32,
+    /// exclusive
+    pub to: u32,
+}
+
 /// A byte span
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BSpan {
