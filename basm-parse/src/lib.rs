@@ -38,16 +38,19 @@ pub enum Value<'a> {
     Decimal(&'a str),
     Float(&'a str),
     Identifier(&'a str),
+    Deref(&'a str),
     String(String),
 }
 pub fn line(input: &str) -> IResult<&str, Line> {
-    all_consuming(alt((
-        map(eof, |_| Line::Empty),
-        map(section, |s| Line::Section(s)),
-        map(label, |s| Line::Label(s)),
-        ins_or_var,
-        // map(instruction, |(ins, args)| Line::Ins(ins, args)),
-    )))(input)
+    all_consuming(terminated(
+        alt((
+            map(eof, |_| Line::Empty),
+            map(section, |s| Line::Section(s)),
+            map(label, |s| Line::Label(s)),
+            ins_or_var,
+        )),
+        opt(tuple((space0_then(tag(";")), space0, eof))),
+    ))(input)
 }
 pub fn section(input: &str) -> IResult<&str, &str> {
     spaced(preceded(
@@ -140,8 +143,13 @@ pub fn val(input: &str) -> IResult<&str, Value> {
         map(decimal, Value::Decimal),
         map(float, Value::Float),
         map(identifier, Value::Identifier),
+        map(derefed, Value::Deref),
         map(parse_string, Value::String),
     ))(input)
+}
+
+pub fn derefed(input: &str) -> IResult<&str, &str> {
+    delimited(tag("["), spaced(identifier), tag("]"))(input)
 }
 
 fn space0_then<'a, F: 'a, O, E: ParseError<&'a str>>(

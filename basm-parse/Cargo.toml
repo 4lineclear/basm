@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 nom = "6.2"
+nom_locate = "4.2.0"
 # unicode
 # unicode-ident = "1.0"
 # unicode-normalization = "0.1"
