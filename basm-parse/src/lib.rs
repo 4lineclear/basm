@@ -4,7 +4,7 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, char, one_of, space0, space1},
     combinator::{all_consuming, eof, map, opt, recognize, value},
     error::ParseError,
-    multi::{fold_many0, many0, many0_count, many1},
+    multi::{fold_many0, many0, many0_count, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
@@ -16,26 +16,18 @@ mod test;
 pub fn parse_all(input: &str) -> impl Iterator<Item = IResult<&str, Line>> {
     input.lines().map(line)
 }
-pub fn val(input: &str) -> IResult<&str, Value> {
-    alt((
-        map(hexadecimal, Value::Hex),
-        map(octal, Value::Octal),
-        map(binary, Value::Binary),
-        map(decimal, Value::Decimal),
-        map(float, Value::Float),
-        map(identifier, Value::Identifier),
-        map(parse_string, Value::String),
-    ))(input)
-}
 
 #[derive(Debug)]
 pub enum Line<'a> {
     Empty,
     Section(&'a str),
     Label(&'a str),
-    Nullary(&'a str),
-    Unary(&'a str, Value<'a>),
-    Binary(&'a str, Value<'a>, Value<'a>),
+    Ins(&'a str, Vec<Value<'a>>),
+    Var {
+        name: &'a str,
+        dir: &'a str,
+        val: Vec<Value<'a>>,
+    },
 }
 
 #[derive(Debug)]
@@ -48,17 +40,13 @@ pub enum Value<'a> {
     Identifier(&'a str),
     String(String),
 }
-
 pub fn line(input: &str) -> IResult<&str, Line> {
     all_consuming(alt((
         map(eof, |_| Line::Empty),
         map(section, |s| Line::Section(s)),
         map(label, |s| Line::Label(s)),
-        map(instruction, |(ins, arg)| match arg {
-            Some((arg0, Some(arg1))) => Line::Binary(ins, arg0, arg1),
-            Some((arg0, None)) => Line::Unary(ins, arg0),
-            None => Line::Nullary(ins),
-        }),
+        ins_or_var,
+        // map(instruction, |(ins, args)| Line::Ins(ins, args)),
     )))(input)
 }
 pub fn section(input: &str) -> IResult<&str, &str> {
@@ -67,18 +55,37 @@ pub fn section(input: &str) -> IResult<&str, &str> {
         space0_then(identifier),
     ))(input)
 }
+
 pub fn label(input: &str) -> IResult<&str, &str> {
     spaced(terminated(identifier, preceded(space0, tag(":"))))(input)
 }
-pub fn instruction(input: &str) -> IResult<&str, (&str, Option<(Value, Option<Value>)>)> {
-    spaced(tuple((
-        identifier,
-        opt(tuple((
-            space1_then(val),
-            opt(preceded(space0_then(tag(",")), space1_then(val))),
-        ))),
-    )))(input)
+
+pub fn values0(input: &str) -> IResult<&str, Vec<Value>> {
+    spaced(separated_list0(tag(","), spaced(val)))(input)
 }
+pub fn values1(input: &str) -> IResult<&str, Vec<Value>> {
+    spaced(separated_list1(tag(","), spaced(val)))(input)
+}
+
+pub fn ins_or_var(input: &str) -> IResult<&str, Line> {
+    map(
+        spaced(tuple((
+            identifier,
+            alt((
+                map(tuple((space1_then(identifier), values1)), Ok),
+                map(values0, Err),
+            )),
+        ))),
+        |(name, args)| match args {
+            Ok((dir, val)) => Line::Var { name, dir, val },
+            Err(args) => Line::Ins(name, args),
+        },
+    )(input)
+}
+
+// pub fn instruction(input: &str) -> IResult<&str, (&str, Vec<Value>)> {
+//     spaced(tuple((identifier, values)))(input)
+// }
 // pub fn nullary(input: &str) -> IResult<&str, &str> {
 //     spaced(identifier)(input)
 // }
@@ -124,6 +131,19 @@ where
 {
     delimited(space0, inner, space0)
 }
+
+pub fn val(input: &str) -> IResult<&str, Value> {
+    alt((
+        map(hexadecimal, Value::Hex),
+        map(octal, Value::Octal),
+        map(binary, Value::Binary),
+        map(decimal, Value::Decimal),
+        map(float, Value::Float),
+        map(identifier, Value::Identifier),
+        map(parse_string, Value::String),
+    ))(input)
+}
+
 fn space0_then<'a, F: 'a, O, E: ParseError<&'a str>>(
     inner: F,
 ) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
@@ -132,6 +152,7 @@ where
 {
     preceded(space0, inner)
 }
+
 fn space1_then<'a, F: 'a, O, E: ParseError<&'a str>>(
     inner: F,
 ) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
@@ -140,12 +161,14 @@ where
 {
     preceded(space1, inner)
 }
+
 pub fn identifier(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         alt((alpha1, tag("_"))),
         many0_count(alt((alphanumeric1, tag("_")))),
     ))(input)
 }
+
 fn hexadecimal(input: &str) -> IResult<&str, &str> {
     preceded(
         alt((tag("0x"), tag("0X"))),
@@ -155,21 +178,25 @@ fn hexadecimal(input: &str) -> IResult<&str, &str> {
         ))),
     )(input)
 }
+
 fn octal(input: &str) -> IResult<&str, &str> {
     preceded(
         alt((tag("0o"), tag("0O"))),
         recognize(many1(terminated(one_of("01234567"), many0(char('_'))))),
     )(input)
 }
+
 fn binary(input: &str) -> IResult<&str, &str> {
     preceded(
         alt((tag("0b"), tag("0B"))),
         recognize(many1(terminated(one_of("01"), many0(char('_'))))),
     )(input)
 }
+
 fn decimal(input: &str) -> IResult<&str, &str> {
     recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
 }
+
 fn float(input: &str) -> IResult<&str, &str> {
     alt((
         // Case one: .42

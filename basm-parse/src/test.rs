@@ -21,56 +21,56 @@ fn label_fail() {
 #[test]
 fn nullary() {
     debug_check(
-        crate::instruction("   _one   "),
-        expect![[r#"Ok(("", ("_one", None)))"#]],
+        crate::ins_or_var("   _one   "),
+        expect![[r#"Ok(("", Ins("_one", [])))"#]],
     );
 }
 #[test]
 fn unary() {
     debug_check(
-        crate::instruction("   _one  two "),
-        expect![[r#"Ok(("", ("_one", Some((Identifier("two"), None)))))"#]],
+        crate::ins_or_var("   _one  two "),
+        expect![[r#"Ok(("", Ins("_one", [Identifier("two")])))"#]],
     );
 }
 #[test]
 fn binary() {
     debug_check(
-        crate::instruction("   _one  two,   threee "),
-        expect![[r#"Ok(("", ("_one", Some((Identifier("two"), Some(Identifier("threee")))))))"#]],
+        crate::ins_or_var("   _one  two,   threee "),
+        expect![[r#"Ok(("", Ins("_one", [Identifier("two"), Identifier("threee")])))"#]],
     );
 }
 #[test]
 fn nullary_list() {
     let actual = "one\ntwo\nthree\nfour"
         .lines()
-        .map(crate::instruction)
+        .map(crate::ins_or_var)
         .map(|r| format!("{r:?}"))
         .collect::<Vec<_>>()
         .join("\n");
     check(
         &actual,
         expect![[r#"
-            Ok(("", ("one", None)))
-            Ok(("", ("two", None)))
-            Ok(("", ("three", None)))
-            Ok(("", ("four", None)))"#]],
+            Ok(("", Ins("one", [])))
+            Ok(("", Ins("two", [])))
+            Ok(("", Ins("three", [])))
+            Ok(("", Ins("four", [])))"#]],
     );
 }
 #[test]
 fn unary_list() {
     let actual = ("one two\nthree four\nfive six\nseven eight")
         .lines()
-        .map(crate::instruction)
+        .map(crate::ins_or_var)
         .map(|r| format!("{r:?}"))
         .collect::<Vec<_>>()
         .join("\n");
     check(
         &actual,
         expect![[r#"
-            Ok(("", ("one", Some((Identifier("two"), None)))))
-            Ok(("", ("three", Some((Identifier("four"), None)))))
-            Ok(("", ("five", Some((Identifier("six"), None)))))
-            Ok(("", ("seven", Some((Identifier("eight"), None)))))"#]],
+            Ok(("", Ins("one", [Identifier("two")])))
+            Ok(("", Ins("three", [Identifier("four")])))
+            Ok(("", Ins("five", [Identifier("six")])))
+            Ok(("", Ins("seven", [Identifier("eight")])))"#]],
     );
 }
 #[test]
@@ -86,10 +86,10 @@ fn unit_list_1() {
     check(
         &actual,
         expect![[r#"
-            Ok(("", Nullary("one")))
-            Ok(("", Unary("two", Identifier("three"))))
-            Ok(("", Unary("four", Identifier("five"))))
-            Ok(("", Binary("six", Identifier("seven"), Identifier("eight"))))"#]],
+            Ok(("", Ins("one", [])))
+            Ok(("", Ins("two", [Identifier("three")])))
+            Ok(("", Ins("four", [Identifier("five")])))
+            Ok(("", Ins("six", [Identifier("seven"), Identifier("eight")])))"#]],
     );
 }
 #[test]
@@ -147,19 +147,19 @@ _start:
         expect![[r#"
             Ok(("", Empty))
             Ok(("", Section("data")))
-            Err(Error(Error { input: "\"Hello, World\", 10", code: Eof }))
+            Ok(("", Var { name: "message", dir: "db", val: [String("Hello, World"), Decimal("10")] }))
             Ok(("", Empty))
             Ok(("", Section("text")))
-            Ok(("", Unary("global", Identifier("_start"))))
+            Ok(("", Ins("global", [Identifier("_start")])))
             Ok(("", Empty))
             Ok(("", Label("_start")))
-            Ok(("", Binary("mov", Identifier("rax"), Decimal("1"))))
-            Ok(("", Binary("mov", Identifier("rdi"), Decimal("1"))))
-            Ok(("", Binary("mov", Identifier("rsi"), Identifier("message"))))
-            Ok(("", Binary("mov", Identifier("rdx"), Decimal("13"))))
-            Ok(("", Nullary("syscall")))
-            Ok(("", Binary("mov", Identifier("rax"), Decimal("60"))))
-            Ok(("", Binary("xor", Identifier("rdi"), Identifier("rdi"))))
-            Ok(("", Nullary("syscall")))"#]],
+            Ok(("", Ins("mov", [Identifier("rax"), Decimal("1")])))
+            Ok(("", Ins("mov", [Identifier("rdi"), Decimal("1")])))
+            Ok(("", Ins("mov", [Identifier("rsi"), Identifier("message")])))
+            Ok(("", Ins("mov", [Identifier("rdx"), Decimal("13")])))
+            Ok(("", Ins("syscall", [])))
+            Ok(("", Ins("mov", [Identifier("rax"), Decimal("60")])))
+            Ok(("", Ins("xor", [Identifier("rdi"), Identifier("rdi")])))
+            Ok(("", Ins("syscall", [])))"#]],
     );
 }
