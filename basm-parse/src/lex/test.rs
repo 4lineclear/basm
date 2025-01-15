@@ -1,6 +1,6 @@
 use expect_test::{expect, Expect};
 
-use crate::Span;
+use super::Span;
 
 // TODO: create human readable version of SP
 
@@ -27,7 +27,7 @@ impl Stringify for Span<'_> {
         format!("{}", self.fragment())
     }
 }
-impl Stringify for crate::Line<'_> {
+impl Stringify for super::Line<'_> {
     fn stringify(&self) -> String {
         self.kind.stringify()
             + &self
@@ -36,11 +36,11 @@ impl Stringify for crate::Line<'_> {
                 .unwrap_or("".to_owned())
     }
 }
-impl Stringify for crate::LineKind<'_> {
+impl Stringify for super::LineKind<'_> {
     fn stringify(&self) -> String {
-        use crate::LineKind::*;
+        use super::LineKind::*;
         match self {
-            Empty => "empty".into(),
+            Empty => "".into(),
             Section(s) | Label(s) => s.stringify(),
             Ins(s, val) => s.stringify() + " " + &val.stringify(),
             Var { name, dir, val } => {
@@ -49,9 +49,9 @@ impl Stringify for crate::LineKind<'_> {
         }
     }
 }
-impl Stringify for crate::Value<'_> {
+impl Stringify for super::Value<'_> {
     fn stringify(&self) -> String {
-        use crate::Value::*;
+        use super::Value::*;
         match self {
             Hex(s) | Octal(s) | Binary(s) | Decimal(s) | Float(s) | Identifier(s) | Deref(s) => {
                 s.stringify()
@@ -60,7 +60,7 @@ impl Stringify for crate::Value<'_> {
         }
     }
 }
-impl Stringify for Vec<crate::Value<'_>> {
+impl Stringify for Vec<super::Value<'_>> {
     fn stringify(&self) -> String {
         self.into_iter()
             .map(Stringify::stringify)
@@ -87,12 +87,12 @@ fn apply_lines<'a, D: Stringify + 'a>(src: &'a str, apply: impl Fn(Span<'a>) -> 
 
 #[test]
 fn label() {
-    debug_check(crate::label("   _one : ".into()), expect!["'', _one"]);
+    debug_check(super::label("   _one : ".into()), expect!["'', _one"]);
 }
 #[test]
 fn label_fail() {
     debug_check(
-        crate::label("12one:".into()),
+        super::label("12one:".into()),
         expect![[
             r#"Error(Error { input: LocatedSpan { offset: 0, line: 1, fragment: "12one:", extra: () }, code: Tag })"#
         ]],
@@ -100,27 +100,26 @@ fn label_fail() {
 }
 #[test]
 fn nullary() {
-    debug_check(crate::ins_or_var("   _one   ".into()), expect!["'', _one "]);
+    debug_check(super::ins_or_var("   _one   ".into()), expect!["'', _one "]);
 }
 #[test]
 fn unary() {
     debug_check(
-        crate::ins_or_var("   _one  two ".into()),
+        super::ins_or_var("   _one  two ".into()),
         expect!["'', _one two"],
     );
 }
 #[test]
 fn binary() {
     debug_check(
-        crate::ins_or_var("   _one  two,   threee ".into()),
+        super::ins_or_var("   _one  two,   threee ".into()),
         expect!["'', _one two, threee"],
     );
 }
 #[test]
 fn nullary_list() {
-    let actual = apply_lines("one\ntwo\nthree\nfour", crate::ins_or_var);
     check(
-        &actual,
+        &apply_lines("one\ntwo\nthree\nfour", super::ins_or_var),
         expect![[r#"
             '', one 
             '', two 
@@ -130,12 +129,11 @@ fn nullary_list() {
 }
 #[test]
 fn unary_list() {
-    let actual = apply_lines(
-        "one two\nthree four\nfive six\nseven eight",
-        crate::ins_or_var,
-    );
     check(
-        &actual,
+        &apply_lines(
+            "one two\nthree four\nfive six\nseven eight",
+            super::ins_or_var,
+        ),
         expect![[r#"
             '', one two
             '', three four
@@ -145,13 +143,11 @@ fn unary_list() {
 }
 #[test]
 fn unit_list_1() {
-    let actual = apply_lines(
-        "one\ntwo three\nfour five\nsix seven, eight",
-        crate::ins_or_var,
-    );
-
     check(
-        &actual,
+        &apply_lines(
+            "one\ntwo three\nfour five\nsix seven, eight",
+            super::ins_or_var,
+        ),
         expect![[r#"
             '', one 
             '', two three
@@ -162,16 +158,14 @@ fn unit_list_1() {
 #[test]
 fn section() {
     debug_check(
-        crate::section("   section .data".into()),
+        super::section("   section .data".into()),
         expect!["'', data"],
     );
 }
 #[test]
 fn sections() {
-    let actual = apply_lines("section .data\nsection .bss\nsection .text", crate::section);
-
     check(
-        &actual,
+        &apply_lines("section .data\nsection .bss\nsection .text", super::section),
         expect![[r#"
             '', data
             '', bss
@@ -182,14 +176,14 @@ fn sections() {
 #[test]
 fn hello_world() {
     check(
-        &apply_lines(include_str!("./0-hello-world.asm"), crate::line),
+        &apply_lines(include_str!("./test/0-hello-world.asm"), super::line),
         expect![[r#"
             '', data
             '', message db "Hello, World", 10 ; note the newline at the end
-            '', empty
+            '', 
             '', text
             '', global _start
-            '', empty
+            '', 
             '', _start
             '', mov rax, 1 ; system call for write
             '', mov rdi, 1 ; file handle 1 is stdout
@@ -204,26 +198,26 @@ fn hello_world() {
 #[test]
 fn print_any() {
     check(
-        &apply_lines(include_str!("./1-print-any.asm"), crate::line),
+        &apply_lines(include_str!("./test/1-print-any.asm"), super::line),
         expect![[r#"
             '', data
             '', hello_world db "Hello, World!", 10, 0
             '', whats_up db "What's up", 10, 0
             '', long_text db "this is a longer line of text.", 10, 0
-            '', empty
+            '', 
             '', text
             '', global _start
-            '', empty
+            '', 
             '', _start
             '', mov rax, hello_world
             '', call print
-            '', empty
+            '', 
             '', mov rax, whats_up
             '', call print
-            '', empty
+            '', 
             '', mov rax, long_text
             '', call print
-            '', empty
+            '', 
             '', mov rax, 60
             '', mov rdi, 0
             '', syscall 
@@ -236,13 +230,32 @@ fn print_any() {
             '', mov cl, rax
             '', cmp cl, 0
             '', jne print_loop
-            '', empty
+            '', 
             '', mov rax, 1
             '', mov rdi, 1
             '', pop rsi
             '', mov rdx, rbx
             '', syscall 
-            '', empty
+            '', 
             '', ret "#]],
+    );
+}
+
+#[test]
+fn comments_strings() {
+    check(
+        &apply_lines(
+            r#"
+;;;;;; one comment
+;;;;;; two comment
+msg db "; not ; a ; comment ;", 0, 10 ; a comment
+"#,
+            super::line,
+        ),
+        expect![[r#"
+            '', 
+            '',  ;;;;;; one comment
+            '',  ;;;;;; two comment
+            '', msg db "; not ; a ; comment ;", 0, 10 ; a comment"#]],
     );
 }
