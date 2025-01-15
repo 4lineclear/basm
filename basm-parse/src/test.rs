@@ -21,6 +21,8 @@ fn label() {
 }
 #[test]
 fn label_fail() {
+    panic!("{:#?}", crate::label("yeah()"));
+    // println!("");
     debug_check(
         crate::label("12one:"),
         expect![[r#"Err(Error(Error { input: "12one:", code: Tag }))"#]],

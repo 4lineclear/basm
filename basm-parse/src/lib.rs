@@ -1,12 +1,18 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, char, one_of, space0, space1},
-    combinator::{all_consuming, eof, map, opt, recognize, value},
-    error::ParseError,
+    bytes::{
+        complete::tag,
+        streaming::{is_not, take_while_m_n},
+    },
+    character::{
+        complete::{alpha1, alphanumeric1, char, one_of, space0, space1},
+        streaming::multispace1,
+    },
+    combinator::{all_consuming, eof, map, map_opt, map_res, opt, recognize, value, verify},
+    error::{FromExternalError, ParseError},
     multi::{fold_many0, many0, many0_count, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, terminated, tuple},
-    IResult,
+    IResult, Parser,
 };
 
 #[cfg(test)]
@@ -113,16 +119,6 @@ pub fn ins_or_var(input: &str) -> IResult<&str, Line> {
 //   hex characters
 // - an escape followed by whitespace consumes all whitespace between the
 //   escape and the next non-whitespace character
-
-// #![cfg(feature = "alloc")]
-
-// use nom::branch::alt;
-use nom::bytes::streaming::{is_not, take_while_m_n};
-use nom::character::streaming::multispace1;
-use nom::combinator::{map_opt, map_res, verify};
-use nom::error::FromExternalError;
-// use nom::multi::fold;
-use nom::Parser;
 
 /// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
 /// trailing whitespace, returning the output of `inner`.
@@ -367,26 +363,3 @@ where
     // loop won't accidentally match your closing delimiter!
     delimited(char('"'), build_string, char('"'))(input)
 }
-
-// fn main() {
-//     let data = "\"abc\"";
-//     println!("EXAMPLE 1:\nParsing a simple input string: {}", data);
-//     let result = parse_string::<()>(data);
-//     assert_eq!(result, Ok(("", String::from("abc"))));
-//     println!("Result: {}\n\n", result.unwrap().1);
-//
-//     let data = "\"tab:\\tafter tab, newline:\\nnew line, quote: \\\", emoji: \\u{1F602}, newline:\\nescaped whitespace: \\    abc\"";
-//     println!(
-//     "EXAMPLE 2:\nParsing a string with escape sequences, newline literal, and escaped whitespace:\n\n{}\n",
-//     data
-//   );
-//     let result = parse_string::<()>(data);
-//     assert_eq!(
-//     result,
-//     Ok((
-//       "",
-//       String::from("tab:\tafter tab, newline:\nnew line, quote: \", emoji: 😂, newline:\nescaped whitespace: abc")
-//     ))
-//   );
-//     println!("Result:\n\n{}", result.unwrap().1);
-// }
