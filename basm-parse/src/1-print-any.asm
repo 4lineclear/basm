@@ -1,4 +1,4 @@
-section .data ;
+section .data
     hello_world db "Hello, World!", 10, 0
     whats_up db "What's up", 10, 0
     long_text db "this is a longer line of text.", 10, 0

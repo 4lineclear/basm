@@ -1,112 +1,169 @@
 use expect_test::{expect, Expect};
 
-fn debug_check<D: std::fmt::Debug>(src: D, expect: Expect) {
-    check(&format!("{src:?}"), expect);
+use crate::Span;
+
+// TODO: create human readable version of SP
+
+trait Stringify {
+    fn stringify(&self) -> String;
+}
+
+impl<T: Stringify, E: std::fmt::Debug> Stringify for Result<T, E> {
+    fn stringify(&self) -> String {
+        match self {
+            Ok(t) => t.stringify(),
+            Err(e) => format!("{e:?}"),
+        }
+    }
+}
+
+impl<T0: Stringify, T1: Stringify> Stringify for (T0, T1) {
+    fn stringify(&self) -> String {
+        "'".to_owned() + &self.0.stringify() + "', " + &self.1.stringify()
+    }
+}
+impl Stringify for Span<'_> {
+    fn stringify(&self) -> String {
+        format!("{}", self.fragment())
+    }
+}
+impl Stringify for crate::Line<'_> {
+    fn stringify(&self) -> String {
+        self.kind.stringify()
+            + &self
+                .comment
+                .map(|s| " ".to_owned() + &s.stringify())
+                .unwrap_or("".to_owned())
+    }
+}
+impl Stringify for crate::LineKind<'_> {
+    fn stringify(&self) -> String {
+        use crate::LineKind::*;
+        match self {
+            Empty => "empty".into(),
+            Section(s) | Label(s) => s.stringify(),
+            Ins(s, val) => s.stringify() + " " + &val.stringify(),
+            Var { name, dir, val } => {
+                name.stringify() + " " + &dir.stringify() + " " + &val.stringify()
+            }
+        }
+    }
+}
+impl Stringify for crate::Value<'_> {
+    fn stringify(&self) -> String {
+        use crate::Value::*;
+        match self {
+            Hex(s) | Octal(s) | Binary(s) | Decimal(s) | Float(s) | Identifier(s) | Deref(s) => {
+                s.stringify()
+            }
+            String(s) => format!("\"{s}\""),
+        }
+    }
+}
+impl Stringify for Vec<crate::Value<'_>> {
+    fn stringify(&self) -> String {
+        self.into_iter()
+            .map(Stringify::stringify)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn debug_check<D: Stringify>(src: D, expect: Expect) {
+    check(&src.stringify(), expect);
 }
 fn check(src: &str, expect: Expect) {
     expect.assert_eq(src);
 }
 
-fn apply_lines<'a, D: std::fmt::Debug + 'a>(src: &'a str, apply: impl Fn(&'a str) -> D) -> String {
+fn apply_lines<'a, D: Stringify + 'a>(src: &'a str, apply: impl Fn(Span<'a>) -> D) -> String {
     src.lines()
+        .map(Span::new)
         .map(apply)
-        .map(|r| format!("{r:?}"))
+        .map(|s| s.stringify())
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 #[test]
 fn label() {
-    debug_check(crate::label("   _one : "), expect![[r#"Ok(("", "_one"))"#]]);
+    debug_check(crate::label("   _one : ".into()), expect!["'', _one"]);
 }
 #[test]
 fn label_fail() {
-    panic!("{:#?}", crate::label("yeah()"));
-    // println!("");
     debug_check(
-        crate::label("12one:"),
-        expect![[r#"Err(Error(Error { input: "12one:", code: Tag }))"#]],
+        crate::label("12one:".into()),
+        expect![[
+            r#"Error(Error { input: LocatedSpan { offset: 0, line: 1, fragment: "12one:", extra: () }, code: Tag })"#
+        ]],
     );
 }
 #[test]
 fn nullary() {
-    debug_check(
-        crate::ins_or_var("   _one   "),
-        expect![[r#"Ok(("", Ins("_one", [])))"#]],
-    );
+    debug_check(crate::ins_or_var("   _one   ".into()), expect!["'', _one "]);
 }
 #[test]
 fn unary() {
     debug_check(
-        crate::ins_or_var("   _one  two "),
-        expect![[r#"Ok(("", Ins("_one", [Identifier("two")])))"#]],
+        crate::ins_or_var("   _one  two ".into()),
+        expect!["'', _one two"],
     );
 }
 #[test]
 fn binary() {
     debug_check(
-        crate::ins_or_var("   _one  two,   threee "),
-        expect![[r#"Ok(("", Ins("_one", [Identifier("two"), Identifier("threee")])))"#]],
+        crate::ins_or_var("   _one  two,   threee ".into()),
+        expect!["'', _one two, threee"],
     );
 }
 #[test]
 fn nullary_list() {
-    let actual = "one\ntwo\nthree\nfour"
-        .lines()
-        .map(crate::ins_or_var)
-        .map(|r| format!("{r:?}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let actual = apply_lines("one\ntwo\nthree\nfour", crate::ins_or_var);
     check(
         &actual,
         expect![[r#"
-            Ok(("", Ins("one", [])))
-            Ok(("", Ins("two", [])))
-            Ok(("", Ins("three", [])))
-            Ok(("", Ins("four", [])))"#]],
+            '', one 
+            '', two 
+            '', three 
+            '', four "#]],
     );
 }
 #[test]
 fn unary_list() {
-    let actual = ("one two\nthree four\nfive six\nseven eight")
-        .lines()
-        .map(crate::ins_or_var)
-        .map(|r| format!("{r:?}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let actual = apply_lines(
+        "one two\nthree four\nfive six\nseven eight",
+        crate::ins_or_var,
+    );
     check(
         &actual,
         expect![[r#"
-            Ok(("", Ins("one", [Identifier("two")])))
-            Ok(("", Ins("three", [Identifier("four")])))
-            Ok(("", Ins("five", [Identifier("six")])))
-            Ok(("", Ins("seven", [Identifier("eight")])))"#]],
+            '', one two
+            '', three four
+            '', five six
+            '', seven eight"#]],
     );
 }
 #[test]
 fn unit_list_1() {
-    let actual = "one\ntwo three\nfour five\nsix seven, eight"
-        .lines()
-        .inspect(|s| println!("{s}"))
-        .map(|s| crate::line(s))
-        .map(|r| format!("{r:?}"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let actual = apply_lines(
+        "one\ntwo three\nfour five\nsix seven, eight",
+        crate::ins_or_var,
+    );
 
     check(
         &actual,
         expect![[r#"
-            Ok(("", Ins("one", [])))
-            Ok(("", Ins("two", [Identifier("three")])))
-            Ok(("", Ins("four", [Identifier("five")])))
-            Ok(("", Ins("six", [Identifier("seven"), Identifier("eight")])))"#]],
+            '', one 
+            '', two three
+            '', four five
+            '', six seven, eight"#]],
     );
 }
 #[test]
 fn section() {
     debug_check(
-        crate::section("   section .data"),
-        expect![[r#"Ok(("", "data"))"#]],
+        crate::section("   section .data".into()),
+        expect!["'', data"],
     );
 }
 #[test]
@@ -116,9 +173,9 @@ fn sections() {
     check(
         &actual,
         expect![[r#"
-            Ok(("", "data"))
-            Ok(("", "bss"))
-            Ok(("", "text"))"#]],
+            '', data
+            '', bss
+            '', text"#]],
     );
 }
 
@@ -127,21 +184,21 @@ fn hello_world() {
     check(
         &apply_lines(include_str!("./0-hello-world.asm"), crate::line),
         expect![[r#"
-            Ok(("", Section("data")))
-            Ok(("", Var { name: "message", dir: "db", val: [String("Hello, World"), Decimal("10")] }))
-            Ok(("", Empty))
-            Ok(("", Section("text")))
-            Ok(("", Ins("global", [Identifier("_start")])))
-            Ok(("", Empty))
-            Ok(("", Label("_start")))
-            Ok(("", Ins("mov", [Identifier("rax"), Decimal("1")])))
-            Ok(("", Ins("mov", [Identifier("rdi"), Decimal("1")])))
-            Ok(("", Ins("mov", [Identifier("rsi"), Identifier("message")])))
-            Ok(("", Ins("mov", [Identifier("rdx"), Decimal("13")])))
-            Ok(("", Ins("syscall", [])))
-            Ok(("", Ins("mov", [Identifier("rax"), Decimal("60")])))
-            Ok(("", Ins("xor", [Identifier("rdi"), Identifier("rdi")])))
-            Ok(("", Ins("syscall", [])))"#]],
+            '', data
+            '', message db "Hello, World", 10 ; note the newline at the end
+            '', empty
+            '', text
+            '', global _start
+            '', empty
+            '', _start
+            '', mov rax, 1 ; system call for write
+            '', mov rdi, 1 ; file handle 1 is stdout
+            '', mov rsi, message ; address of string to output
+            '', mov rdx, 13 ; number of bytes
+            '', syscall  ; invoke operating system to do the write
+            '', mov rax, 60 ; system call for exit
+            '', xor rdi, rdi ; exit code 0
+            '', syscall  ; invoke operating system to exit"#]],
     );
 }
 #[test]
@@ -149,43 +206,43 @@ fn print_any() {
     check(
         &apply_lines(include_str!("./1-print-any.asm"), crate::line),
         expect![[r#"
-            Ok(("", Section("data")))
-            Ok(("", Var { name: "hello_world", dir: "db", val: [String("Hello, World!"), Decimal("10"), Decimal("0")] }))
-            Ok(("", Var { name: "whats_up", dir: "db", val: [String("What's up"), Decimal("10"), Decimal("0")] }))
-            Ok(("", Var { name: "long_text", dir: "db", val: [String("this is a longer line of text."), Decimal("10"), Decimal("0")] }))
-            Ok(("", Empty))
-            Ok(("", Section("text")))
-            Ok(("", Ins("global", [Identifier("_start")])))
-            Ok(("", Empty))
-            Ok(("", Label("_start")))
-            Ok(("", Ins("mov", [Identifier("rax"), Identifier("hello_world")])))
-            Ok(("", Ins("call", [Identifier("print")])))
-            Ok(("", Empty))
-            Ok(("", Ins("mov", [Identifier("rax"), Identifier("whats_up")])))
-            Ok(("", Ins("call", [Identifier("print")])))
-            Ok(("", Empty))
-            Ok(("", Ins("mov", [Identifier("rax"), Identifier("long_text")])))
-            Ok(("", Ins("call", [Identifier("print")])))
-            Ok(("", Empty))
-            Ok(("", Ins("mov", [Identifier("rax"), Decimal("60")])))
-            Ok(("", Ins("mov", [Identifier("rdi"), Decimal("0")])))
-            Ok(("", Ins("syscall", [])))
-            Ok(("", Label("print")))
-            Ok(("", Ins("push", [Identifier("rax")])))
-            Ok(("", Ins("mov", [Identifier("rbx"), Decimal("0")])))
-            Ok(("", Label("print_loop")))
-            Ok(("", Ins("inc", [Identifier("rax")])))
-            Ok(("", Ins("inc", [Identifier("rbx")])))
-            Ok(("", Ins("mov", [Identifier("cl"), Deref("rax")])))
-            Ok(("", Ins("cmp", [Identifier("cl"), Decimal("0")])))
-            Ok(("", Ins("jne", [Identifier("print_loop")])))
-            Ok(("", Empty))
-            Ok(("", Ins("mov", [Identifier("rax"), Decimal("1")])))
-            Ok(("", Ins("mov", [Identifier("rdi"), Decimal("1")])))
-            Ok(("", Ins("pop", [Identifier("rsi")])))
-            Ok(("", Ins("mov", [Identifier("rdx"), Identifier("rbx")])))
-            Ok(("", Ins("syscall", [])))
-            Ok(("", Empty))
-            Ok(("", Ins("ret", [])))"#]],
+            '', data
+            '', hello_world db "Hello, World!", 10, 0
+            '', whats_up db "What's up", 10, 0
+            '', long_text db "this is a longer line of text.", 10, 0
+            '', empty
+            '', text
+            '', global _start
+            '', empty
+            '', _start
+            '', mov rax, hello_world
+            '', call print
+            '', empty
+            '', mov rax, whats_up
+            '', call print
+            '', empty
+            '', mov rax, long_text
+            '', call print
+            '', empty
+            '', mov rax, 60
+            '', mov rdi, 0
+            '', syscall 
+            '', print
+            '', push rax
+            '', mov rbx, 0
+            '', print_loop
+            '', inc rax
+            '', inc rbx
+            '', mov cl, rax
+            '', cmp cl, 0
+            '', jne print_loop
+            '', empty
+            '', mov rax, 1
+            '', mov rdi, 1
+            '', pop rsi
+            '', mov rdx, rbx
+            '', syscall 
+            '', empty
+            '', ret "#]],
     );
 }
