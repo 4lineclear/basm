@@ -1,7 +1,7 @@
-section   .data
+section   data
     message db "Hello, World", 10  ; note the newline at the end
 
-section   .text
+section   text
     global    _start
 
 _start: 
