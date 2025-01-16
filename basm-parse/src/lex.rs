@@ -1,5 +1,3 @@
-// TODO: move to using a hand-written parser.
-
 use std::{
     iter::Peekable,
     str::{CharIndices, Lines},
@@ -11,55 +9,41 @@ mod test;
 #[derive(Debug, Clone, Copy)]
 pub struct Line {
     pub kind: LineKind,
+    pub errors: (u32, u32),
     pub literals: (u32, u32),
     pub comment: Option<Span>,
 }
 
 #[derive(Default, Clone, Copy)]
 pub struct Span {
-    pub line_from: u32,
-    pub line_to: u32,
     pub from: u32,
     pub to: u32,
 }
 
 impl std::fmt::Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "({}.{}, {}.{})",
-            self.line_from, self.line_to, self.from, self.to
-        )
+        write!(f, "({}, {})", self.from, self.to)
     }
 }
 
 impl Span {
     pub fn to(mut self, other: Self) -> Self {
-        self.line_to = other.line_to;
         self.to = other.to;
         self
     }
     pub fn between(mut self, other: Self) -> Self {
         self.from = self.to;
         self.to = other.from;
-        self.line_to = self.line_to.max(other.line_from);
         self
     }
-    pub fn point(line: u32, pos: u32) -> Self {
+    pub fn point(pos: u32) -> Self {
         Self {
-            line_from: line,
-            line_to: line + 1,
             from: pos,
             to: pos + 1,
         }
     }
-    pub fn inline(line: u32, from: u32, to: u32) -> Self {
-        Self {
-            line_from: line,
-            line_to: line + 1,
-            from,
-            to,
-        }
+    pub fn new(from: u32, to: u32) -> Self {
+        Self { from, to }
     }
 }
 
@@ -136,6 +120,7 @@ impl<'a> Lexer<'a> {
         let mut comment = None;
         let mut kind = LineKind::Empty;
 
+        let err_start = self.errors.len() as u32;
         let lit_start = self.literals.len() as u32;
 
         self.line_starts
@@ -156,11 +141,13 @@ impl<'a> Lexer<'a> {
 
             if let 'a'..='z' | 'A'..='Z' | '_' = ch {
                 let end = self.ident(pos);
-                let span = Span::inline(self.line, pos, end);
+                let span = Span::new(pos, end);
                 self.check_comma(&mut kind, last_comma, lit_start, span);
                 match (post_comma, &kind) {
                     (false, LineKind::Empty) => kind = LineKind::Instruction(span),
-                    (false, LineKind::Instruction(s0)) if self.slice(*s0) == "section" => {
+                    (false, LineKind::Instruction(s0))
+                        if self.slice(self.line, *s0) == "section" =>
+                    {
                         kind = LineKind::Section(span);
                     }
                     _ => self.literals.push((span, Literal::Ident)),
@@ -169,7 +156,7 @@ impl<'a> Lexer<'a> {
             }
             if let '"' = ch {
                 let end = self.string(pos);
-                let span = Span::inline(self.line, pos, end);
+                let span = Span::new(pos, end);
                 self.check_comma(&mut kind, last_comma, lit_start, span);
                 self.literals.push((span, Literal::String));
                 continue;
@@ -179,18 +166,23 @@ impl<'a> Lexer<'a> {
                     kind = LineKind::Label(s)
                 } else {
                     self.errors
-                        .push((Span::point(self.line, pos), LineError::UnknownChar(ch)))
+                        .push((Span::point(pos), LineError::UnknownChar(ch)))
                 }
                 continue;
             }
             if let '0'..='9' = ch {
-                if ch == '0' {
-                } else {
-                    let end = self.decimal(pos);
-                    let span = Span::inline(self.line, pos, end);
-                    self.check_comma(&mut kind, last_comma, lit_start, span);
-                    self.literals.push((span, Literal::Decimal));
-                }
+                let end = match self
+                    .chars
+                    .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
+                {
+                    Some((_, 'b')) => self.binary(pos),
+                    Some((_, 'o')) => self.octal(pos),
+                    Some((_, 'x')) => self.hex(pos),
+                    _ => self.decimal(pos),
+                };
+                let span = Span::new(pos, end);
+                self.check_comma(&mut kind, last_comma, lit_start, span);
+                self.literals.push((span, Literal::Decimal));
                 continue;
             }
             if let '[' = ch {
@@ -208,15 +200,16 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             if let ';' = ch {
-                comment = Some(Span::inline(self.line, pos, line.len() as u32));
+                comment = Some(Span::new(pos, line.len() as u32));
                 break;
             }
             self.errors
-                .push((Span::point(self.line, pos), LineError::UnknownChar(ch)));
+                .push((Span::point(pos), LineError::UnknownChar(ch)));
         }
         self.line += 1;
         Some(Line {
             kind,
+            errors: (err_start, self.errors.len() as u32),
             literals: (lit_start, self.literals.len() as u32),
             comment,
         })
@@ -248,28 +241,45 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn slice(&self, span: Span) -> &str {
-        let f = self.line_starts[span.line_from as usize] + span.from;
-        let t = self.line_starts[span.line_to as usize - 1] + span.to;
+    fn slice(&self, line: u32, span: Span) -> &str {
+        let base = self.line_starts[line as usize];
+        let f = base + span.from;
+        let t = base + span.to;
         debug_assert!(f <= t, "given span was invalid: {span:?}");
         &self.src()[f as usize..t as usize]
     }
-
-    fn ident(&mut self, start: u32) -> u32 {
+    fn until(&mut self, start: u32, check: impl Fn(char) -> bool) -> u32 {
         let mut last = start;
-        while let Some((i, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9')) = self.chars.peek().copied() {
+        while let Some((i, ch)) = self.chars.peek().copied() {
+            if !check(ch) {
+                break;
+            }
             last = i as u32;
             self.chars.next();
         }
         last + 1
     }
+    fn ident(&mut self, start: u32) -> u32 {
+        self.until(
+            start,
+            |ch| matches!(ch, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'),
+        )
+    }
+
+    fn hex(&mut self, start: u32) -> u32 {
+        self.ident(start)
+    }
+
     fn decimal(&mut self, start: u32) -> u32 {
-        let mut last = start;
-        while let Some((i, '0'..='9' | '_' | '.')) = self.chars.peek().copied() {
-            last = i as u32;
-            self.chars.next();
-        }
-        last + 1
+        self.until(start, |ch| matches!(ch, '0'..='9' | '_'))
+    }
+
+    fn octal(&mut self, start: u32) -> u32 {
+        self.until(start, |ch| matches!(ch, '0'..='7' | '_'))
+    }
+
+    fn binary(&mut self, start: u32) -> u32 {
+        self.until(start, |ch| matches!(ch, '0' | '1' | '_'))
     }
     fn string(&mut self, start: u32) -> u32 {
         let mut last = start;
