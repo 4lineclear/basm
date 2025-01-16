@@ -16,14 +16,26 @@ use nom::{
 };
 use nom_locate::LocatedSpan;
 
+// TODO: move to using a hand-written parser.
+
 #[cfg(test)]
 mod test;
 
-pub type Span<'a> = LocatedSpan<&'a str>;
+pub type Span<'a> = LocatedSpan<&'a str, u32>;
 
-/// Parses each line
-pub fn parse_all(input: Span) -> impl Iterator<Item = IResult<Span, Line>> {
-    input.lines().map(Span::new).map(line)
+/// Turn a string into a span iterator over it's lines
+pub fn line_spans(input: &str) -> impl Iterator<Item = Span> {
+    let mut i = 0;
+    input.lines().map(move |program| {
+        let extra = i as u32;
+        i += program.len() + 1;
+        Span::new_extra(program, extra)
+    })
+}
+
+/// Lexes each line
+pub fn lex_lines(input: &str) -> impl Iterator<Item = IResult<Span, Line>> {
+    line_spans(input).map(|s| line(s))
 }
 
 #[derive(Debug)]

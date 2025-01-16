@@ -76,10 +76,13 @@ fn check(src: &str, expect: Expect) {
     expect.assert_eq(src);
 }
 
-fn apply_lines<'a, D: Stringify + 'a>(src: &'a str, apply: impl Fn(Span<'a>) -> D) -> String {
-    src.lines()
-        .map(Span::new)
+fn apply_lines<'a, D: Stringify + std::fmt::Debug + 'a>(
+    src: &'a str,
+    apply: impl Fn(Span<'a>) -> D,
+) -> String {
+    super::line_spans(src)
         .map(apply)
+        .inspect(|s| println!("{s:#?}"))
         .map(|s| s.stringify())
         .collect::<Vec<_>>()
         .join("\n")
@@ -239,6 +242,7 @@ fn print_any() {
             '', 
             '', ret "#]],
     );
+    panic!()
 }
 
 #[test]
