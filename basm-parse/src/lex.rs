@@ -138,73 +138,66 @@ impl<'a> Lexer<'a> {
                 continue;
             }
             last_comma += 1;
-
-            if let 'a'..='z' | 'A'..='Z' | '_' = ch {
-                let end = self.ident(pos);
-                let span = Span::new(pos, end);
-                self.check_comma(&mut kind, last_comma, lit_start, span);
-                match (post_comma, &kind) {
-                    (false, LineKind::Empty) => kind = LineKind::Instruction(span),
-                    (false, LineKind::Instruction(s0))
-                        if self.slice(self.line, *s0) == "section" =>
-                    {
-                        kind = LineKind::Section(span);
+            match ch {
+                'a'..='z' | 'A'..='Z' | '_' => {
+                    let end = self.ident(pos);
+                    let span = Span::new(pos, end);
+                    self.check_comma(&mut kind, last_comma, lit_start, span);
+                    match (post_comma, &kind) {
+                        (false, LineKind::Empty) => kind = LineKind::Instruction(span),
+                        (false, LineKind::Instruction(s0))
+                            if self.slice(self.line, *s0) == "section" =>
+                        {
+                            kind = LineKind::Section(span);
+                        }
+                        _ => self.literals.push((span, Literal::Ident)),
+                    };
+                }
+                '"' => {
+                    let end = self.string(pos);
+                    let span = Span::new(pos, end);
+                    self.check_comma(&mut kind, last_comma, lit_start, span);
+                    self.literals.push((span, Literal::String));
+                }
+                ':' => {
+                    if let LineKind::Instruction(s) = kind {
+                        kind = LineKind::Label(s)
+                    } else {
+                        self.errors
+                            .push((Span::point(pos), LineError::UnknownChar(ch)))
                     }
-                    _ => self.literals.push((span, Literal::Ident)),
-                };
-                continue;
-            }
-            if let '"' = ch {
-                let end = self.string(pos);
-                let span = Span::new(pos, end);
-                self.check_comma(&mut kind, last_comma, lit_start, span);
-                self.literals.push((span, Literal::String));
-                continue;
-            }
-            if let ':' = ch {
-                if let LineKind::Instruction(s) = kind {
-                    kind = LineKind::Label(s)
-                } else {
-                    self.errors
-                        .push((Span::point(pos), LineError::UnknownChar(ch)))
                 }
-                continue;
-            }
-            if let '0'..='9' = ch {
-                let end = match self
-                    .chars
-                    .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
-                {
-                    Some((_, 'b')) => self.binary(pos),
-                    Some((_, 'o')) => self.octal(pos),
-                    Some((_, 'x')) => self.hex(pos),
-                    _ => self.decimal(pos),
-                };
-                let span = Span::new(pos, end);
-                self.check_comma(&mut kind, last_comma, lit_start, span);
-                self.literals.push((span, Literal::Decimal));
-                continue;
-            }
-            if let '[' = ch {
-                deref_active = true;
-                continue;
-            }
-            if let ']' = ch {
-                if !deref_active {
-                    continue;
+                '0'..='9' => {
+                    let end = match self
+                        .chars
+                        .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
+                    {
+                        Some((_, 'b')) => self.binary(pos),
+                        Some((_, 'o')) => self.octal(pos),
+                        Some((_, 'x')) => self.hex(pos),
+                        _ => self.decimal(pos),
+                    };
+                    let span = Span::new(pos, end);
+                    self.check_comma(&mut kind, last_comma, lit_start, span);
+                    self.literals.push((span, Literal::Decimal));
                 }
-                deref_active = false;
-                if let Some(b @ (_, Literal::Ident)) = self.literals.last_mut() {
-                    b.1 = Literal::Deref;
+                '[' => {
+                    deref_active = true;
                 }
-                continue;
+                ']' if deref_active => {
+                    deref_active = false;
+                    if let Some(b @ (_, Literal::Ident)) = self.literals.last_mut() {
+                        b.1 = Literal::Deref;
+                    }
+                }
+                ';' => {
+                    comment = Some(Span::new(pos, line.len() as u32));
+                    break;
+                }
+                _ => self
+                    .errors
+                    .push((Span::point(pos), LineError::UnknownChar(ch))),
             }
-            if let ';' = ch {
-                comment = Some(Span::new(pos, line.len() as u32));
-                break;
-            }
-            self.errors
-                .push((Span::point(pos), LineError::UnknownChar(ch)));
         }
         self.line += 1;
         Some(Line {
