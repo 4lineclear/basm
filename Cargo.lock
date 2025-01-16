@@ -3,11 +3,18 @@
 version = 4
 
 [[package]]
-name = "basm-parse"
+name = "basm"
 version = "0.0.1"
 dependencies = [
  "expect-test",
  "pretty_assertions",
+]
+
+[[package]]
+name = "basm-ls"
+version = "0.0.1"
+dependencies = [
+ "basm",
 ]
 
 [[package]]

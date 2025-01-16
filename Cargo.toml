@@ -1,3 +1,3 @@
 [workspace]
-members = ["basm-parse"]
+members = ["basm-ls", "basm"]
 resolver = "2"
