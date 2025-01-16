@@ -1,265 +1,184 @@
 use expect_test::{expect, Expect};
 
-use super::Span;
-
-// TODO: create human readable version of SP
-
-trait Stringify {
-    fn stringify(&self) -> String;
-}
-
-impl<T: Stringify, E: std::fmt::Debug> Stringify for Result<T, E> {
-    fn stringify(&self) -> String {
-        match self {
-            Ok(t) => t.stringify(),
-            Err(e) => format!("{e:?}"),
-        }
-    }
-}
-
-impl<T0: Stringify, T1: Stringify> Stringify for (T0, T1) {
-    fn stringify(&self) -> String {
-        "'".to_owned() + &self.0.stringify() + "', " + &self.1.stringify()
-    }
-}
-impl Stringify for Span<'_> {
-    fn stringify(&self) -> String {
-        format!("{}", self.fragment())
-    }
-}
-impl Stringify for super::Line<'_> {
-    fn stringify(&self) -> String {
-        self.kind.stringify()
-            + &self
-                .comment
-                .map(|s| " ".to_owned() + &s.stringify())
-                .unwrap_or("".to_owned())
-    }
-}
-impl Stringify for super::LineKind<'_> {
-    fn stringify(&self) -> String {
-        use super::LineKind::*;
-        match self {
-            Empty => "".into(),
-            Section(s) | Label(s) => s.stringify(),
-            Ins(s, val) => s.stringify() + " " + &val.stringify(),
-            Var { name, dir, val } => {
-                name.stringify() + " " + &dir.stringify() + " " + &val.stringify()
-            }
-        }
-    }
-}
-impl Stringify for super::Value<'_> {
-    fn stringify(&self) -> String {
-        use super::Value::*;
-        match self {
-            Hex(s) | Octal(s) | Binary(s) | Decimal(s) | Float(s) | Identifier(s) | Deref(s) => {
-                s.stringify()
-            }
-            String(s) => format!("\"{s}\""),
-        }
-    }
-}
-impl Stringify for Vec<super::Value<'_>> {
-    fn stringify(&self) -> String {
-        self.into_iter()
-            .map(Stringify::stringify)
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-fn debug_check<D: Stringify>(src: D, expect: Expect) {
-    check(&src.stringify(), expect);
-}
-fn check(src: &str, expect: Expect) {
-    expect.assert_eq(src);
-}
-
-fn apply_lines<'a, D: Stringify + std::fmt::Debug + 'a>(
-    src: &'a str,
-    apply: impl Fn(Span<'a>) -> D,
-) -> String {
-    super::line_spans(src)
-        .map(apply)
-        .inspect(|s| println!("{s:#?}"))
-        .map(|s| s.stringify())
+fn debug_iter<D: std::fmt::Debug>(iter: impl Iterator<Item = D>) -> String {
+    iter.map(|s| format!("{s:?}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-#[test]
-fn label() {
-    debug_check(super::label("   _one : ".into()), expect!["'', _one"]);
-}
-#[test]
-fn label_fail() {
-    debug_check(
-        super::label("12one:".into()),
-        expect![[
-            r#"Error(Error { input: LocatedSpan { offset: 0, line: 1, fragment: "12one:", extra: () }, code: Tag })"#
-        ]],
-    );
-}
-#[test]
-fn nullary() {
-    debug_check(super::ins_or_var("   _one   ".into()), expect!["'', _one "]);
-}
-#[test]
-fn unary() {
-    debug_check(
-        super::ins_or_var("   _one  two ".into()),
-        expect!["'', _one two"],
-    );
-}
-#[test]
-fn binary() {
-    debug_check(
-        super::ins_or_var("   _one  two,   threee ".into()),
-        expect!["'', _one two, threee"],
-    );
-}
-#[test]
-fn nullary_list() {
-    check(
-        &apply_lines("one\ntwo\nthree\nfour", super::ins_or_var),
-        expect![[r#"
-            '', one 
-            '', two 
-            '', three 
-            '', four "#]],
-    );
-}
-#[test]
-fn unary_list() {
-    check(
-        &apply_lines(
-            "one two\nthree four\nfive six\nseven eight",
-            super::ins_or_var,
-        ),
-        expect![[r#"
-            '', one two
-            '', three four
-            '', five six
-            '', seven eight"#]],
-    );
-}
-#[test]
-fn unit_list_1() {
-    check(
-        &apply_lines(
-            "one\ntwo three\nfour five\nsix seven, eight",
-            super::ins_or_var,
-        ),
-        expect![[r#"
-            '', one 
-            '', two three
-            '', four five
-            '', six seven, eight"#]],
-    );
-}
-#[test]
-fn section() {
-    debug_check(
-        super::section("   section .data".into()),
-        expect!["'', data"],
-    );
-}
-#[test]
-fn sections() {
-    check(
-        &apply_lines("section .data\nsection .bss\nsection .text", super::section),
-        expect![[r#"
-            '', data
-            '', bss
-            '', text"#]],
-    );
+fn check(src: &str, expect: Expect) {
+    let mut lexer = super::Lexer::new(src);
+    let lines = debug_iter(std::iter::from_fn(|| lexer.line()));
+    let errors = debug_iter(lexer.errors.iter());
+    let literals = debug_iter(lexer.literals.iter());
+    expect.assert_eq(&format!(
+        "errors:\n{errors}\nliterals:\n{literals}\nlines:\n{lines}",
+    ));
 }
 
-#[test]
-fn hello_world() {
-    check(
-        &apply_lines(include_str!("./test/0-hello-world.asm"), super::line),
-        expect![[r#"
-            '', data
-            '', message db "Hello, World", 10 ; note the newline at the end
-            '', 
-            '', text
-            '', global _start
-            '', 
-            '', _start
-            '', mov rax, 1 ; system call for write
-            '', mov rdi, 1 ; file handle 1 is stdout
-            '', mov rsi, message ; address of string to output
-            '', mov rdx, 13 ; number of bytes
-            '', syscall  ; invoke operating system to do the write
-            '', mov rax, 60 ; system call for exit
-            '', xor rdi, rdi ; exit code 0
-            '', syscall  ; invoke operating system to exit"#]],
-    );
+macro_rules! check {
+    ($name:ident, $lit:literal, $expect: expr) => {
+        #[test]
+        fn $name() {
+            check($lit, $expect);
+        }
+    };
 }
-#[test]
-fn print_any() {
-    check(
-        &apply_lines(include_str!("./test/1-print-any.asm"), super::line),
-        expect![[r#"
-            '', data
-            '', hello_world db "Hello, World!", 10, 0
-            '', whats_up db "What's up", 10, 0
-            '', long_text db "this is a longer line of text.", 10, 0
-            '', 
-            '', text
-            '', global _start
-            '', 
-            '', _start
-            '', mov rax, hello_world
-            '', call print
-            '', 
-            '', mov rax, whats_up
-            '', call print
-            '', 
-            '', mov rax, long_text
-            '', call print
-            '', 
-            '', mov rax, 60
-            '', mov rdi, 0
-            '', syscall 
-            '', print
-            '', push rax
-            '', mov rbx, 0
-            '', print_loop
-            '', inc rax
-            '', inc rbx
-            '', mov cl, rax
-            '', cmp cl, 0
-            '', jne print_loop
-            '', 
-            '', mov rax, 1
-            '', mov rdi, 1
-            '', pop rsi
-            '', mov rdx, rbx
-            '', syscall 
-            '', 
-            '', ret "#]],
-    );
-    panic!()
-}
+check!(
+    empty,
+    "",
+    expect![[r#"
+        errors:
 
-#[test]
-fn comments_strings() {
-    check(
-        &apply_lines(
-            r#"
-;;;;;; one comment
-;;;;;; two comment
-msg db "; not ; a ; comment ;", 0, 10 ; a comment
-"#,
-            super::line,
-        ),
-        expect![[r#"
-            '', 
-            '',  ;;;;;; one comment
-            '',  ;;;;;; two comment
-            '', msg db "; not ; a ; comment ;", 0, 10 ; a comment"#]],
-    );
-}
+        literals:
+
+        lines:
+    "#]]
+);
+check!(
+    multi_empty,
+    "\n\n\n\n",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }"#]]
+);
+check!(
+    empty_ws,
+    "\t\t    \t     \t ",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Empty, literals: (0, 0), comment: None }"#]]
+);
+check!(
+    multi_empty_ws,
+    "\t\t    \t     \t \n\n\t\t    \t     \t \n\n",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }"#]]
+);
+check!(
+    singles,
+    "one\n two\t\n threeeeee\n four\n",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Instruction((0.0, 1.3)), literals: (0, 0), comment: None }
+        Line { kind: Instruction((1.1, 2.4)), literals: (0, 0), comment: None }
+        Line { kind: Instruction((2.1, 3.10)), literals: (0, 0), comment: None }
+        Line { kind: Instruction((3.1, 4.5)), literals: (0, 0), comment: None }"#]]
+);
+check!(
+    doubles,
+    "one two\n two threeeee\t\n threeeeee four\n four five\n",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Variable((0.0, 1.3), (0.4, 1.7)), literals: (0, 0), comment: None }
+        Line { kind: Variable((1.1, 2.4), (1.5, 2.13)), literals: (0, 0), comment: None }
+        Line { kind: Variable((2.1, 3.10), (2.11, 3.15)), literals: (0, 0), comment: None }
+        Line { kind: Variable((3.1, 4.5), (3.6, 4.10)), literals: (0, 0), comment: None }"#]]
+);
+check!(
+    triples,
+    "one two three\n two threeeee four",
+    expect![[r#"
+        errors:
+
+        literals:
+        ((0.8, 1.13), Ident)
+        ((1.14, 2.18), Ident)
+        lines:
+        Line { kind: Variable((0.0, 1.3), (0.4, 1.7)), literals: (0, 1), comment: None }
+        Line { kind: Variable((1.1, 2.4), (1.5, 2.13)), literals: (1, 2), comment: None }"#]]
+);
+check!(
+    empty_comments,
+    "\
+\t\t  \t    ; one two three
+; three four five
+\t; five six",
+    expect![[r#"
+        errors:
+
+        literals:
+
+        lines:
+        Line { kind: Empty, literals: (0, 0), comment: Some(9) }
+        Line { kind: Empty, literals: (0, 0), comment: Some(0) }
+        Line { kind: Empty, literals: (0, 0), comment: Some(1) }"#]]
+);
+check!(
+    comment_etc,
+    "\
+abc\t\t  \t    ; one two three
+cde efg; three four five
+ghi ijk klm\t; five six",
+    expect![[r#"
+        errors:
+
+        literals:
+        ((2.8, 3.11), Ident)
+        lines:
+        Line { kind: Instruction((0.0, 1.3)), literals: (0, 0), comment: Some(12) }
+        Line { kind: Variable((1.0, 2.3), (1.4, 2.7)), literals: (0, 0), comment: Some(7) }
+        Line { kind: Variable((2.0, 3.3), (2.4, 3.7)), literals: (0, 1), comment: Some(12) }"#]]
+);
+check!(
+    section,
+    "\
+section data one
+section bss
+section text",
+    expect![[r#"
+        errors:
+
+        literals:
+        ((0.13, 1.16), Ident)
+        lines:
+        Line { kind: Section((0.8, 1.12)), literals: (0, 1), comment: None }
+        Line { kind: Section((1.8, 2.11)), literals: (1, 1), comment: None }
+        Line { kind: Section((2.8, 3.12)), literals: (1, 1), comment: None }"#]]
+);
+check!(
+    comma_err,
+    "\
+,
+,,,, ,,
+,one ,two,",
+    expect![[r#"
+        errors:
+        ((0.0, 1.1), UnknownChar(','))
+        ((1.0, 2.1), UnknownChar(','))
+        ((2.0, 3.1), UnknownChar(','))
+        literals:
+        ((2.1, 3.4), Ident)
+        ((2.6, 3.9), Ident)
+        lines:
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 0), comment: None }
+        Line { kind: Empty, literals: (0, 2), comment: None }"#]]
+);
