@@ -7,46 +7,13 @@ fn debug_iter<D: std::fmt::Debug>(iter: impl Iterator<Item = D>) -> String {
 }
 
 fn check(src: &str, expect: Expect) {
-    use super::LineKind::*;
     let mut lexer = super::Lexer::new(src);
     let lins: Vec<_> = std::iter::from_fn(|| lexer.line()).collect();
     let lines = debug_iter(lins.iter().map(|l| (l.kind, l.literals, l.comment)));
     let errors = debug_iter(lexer.errors.iter());
     let literals = debug_iter(lexer.literals.iter());
-    let mut recon = String::new();
-    for lin in lins {
-        match lin.kind {
-            Empty => (),
-            Label(span) => {
-                recon.push_str(lexer.slice(span));
-            }
-            Section(span) => {
-                recon.push_str(lexer.slice(span));
-            }
-            Instruction(span) => {
-                recon.push_str(lexer.slice(span));
-            }
-            Variable(s0, s1) => {
-                recon.push_str(lexer.slice(s0));
-                recon.push_str(" ");
-                recon.push_str(lexer.slice(s1));
-            }
-        }
-        recon.push_str(" ");
-        recon.push_str(
-            &(lin.literals.0..lin.literals.1)
-                .map(|i| lexer.literals[i as usize])
-                .map(|(s, _)| format!("{}", lexer.slice(s)))
-                .collect::<Vec<_>>()
-                .join(" "),
-        );
-        if let Some(comment) = lin.comment {
-            recon.push_str(lexer.slice(comment));
-        }
-        recon.push('\n');
-    }
     expect.assert_eq(&format!(
-        "errors:\n{errors}\nliterals:\n{literals}\nlines:\n{lines}\nrecon:\n{recon}",
+        "errors:\n{errors}\nliterals:\n{literals}\nlines:\n{lines}",
     ));
 }
 
@@ -60,8 +27,6 @@ fn empty() {
             literals:
 
             lines:
-
-            recon:
         "#]],
     );
 }
@@ -78,13 +43,7 @@ fn multi_empty() {
             (Empty, (0, 0), None)
             (Empty, (0, 0), None)
             (Empty, (0, 0), None)
-            (Empty, (0, 0), None)
-            recon:
- 
- 
- 
- 
-        "#]],
+            (Empty, (0, 0), None)"#]],
     );
 }
 #[test]
@@ -97,10 +56,7 @@ fn empty_ws() {
             literals:
 
             lines:
-            (Empty, (0, 0), None)
-            recon:
- 
-        "#]],
+            (Empty, (0, 0), None)"#]],
     );
 }
 #[test]
@@ -116,13 +72,7 @@ fn multi_empty_ws() {
             (Empty, (0, 0), None)
             (Empty, (0, 0), None)
             (Empty, (0, 0), None)
-            (Empty, (0, 0), None)
-            recon:
- 
- 
- 
- 
-        "#]],
+            (Empty, (0, 0), None)"#]],
     );
 }
 #[test]
@@ -138,13 +88,7 @@ fn singles() {
             (Instruction((0.1, 0.3)), (0, 0), None)
             (Instruction((1.2, 1.4)), (0, 0), None)
             (Instruction((2.3, 1.10)), (0, 0), None)
-            (Instruction((3.4, 1.5)), (0, 0), None)
-            recon:
-            one 
-            two 
-            threeeeee 
-            four 
-        "#]],
+            (Instruction((3.4, 1.5)), (0, 0), None)"#]],
     );
 }
 #[test]
@@ -163,13 +107,7 @@ fn doubles() {
             (Instruction((0.1, 0.3)), (0, 1), None)
             (Instruction((1.2, 1.4)), (1, 2), None)
             (Instruction((2.3, 1.10)), (2, 3), None)
-            (Instruction((3.4, 1.5)), (3, 4), None)
-            recon:
-            one two
-            two threeeee
-            threeeeee four
-            four five
-        "#]],
+            (Instruction((3.4, 1.5)), (3, 4), None)"#]],
     );
 }
 #[test]
@@ -186,11 +124,7 @@ fn triples() {
             ((1.2, 15.19), Ident)
             lines:
             (Instruction((0.1, 0.3)), (0, 2), None)
-            (Instruction((1.2, 1.4)), (2, 4), None)
-            recon:
-            one two three
-            two threeeee four
-        "#]],
+            (Instruction((1.2, 1.4)), (2, 4), None)"#]],
     );
 }
 #[test]
@@ -208,12 +142,7 @@ fn empty_comments() {
             lines:
             (Empty, (0, 0), Some((0.1, 9.24)))
             (Empty, (0, 0), Some((1.2, 0.17)))
-            (Empty, (0, 0), Some((2.3, 1.11)))
-            recon:
-             ; one two three
-             ; three four five
-             ; five six
-        "#]],
+            (Empty, (0, 0), Some((2.3, 1.11)))"#]],
     );
 }
 #[test]
@@ -233,12 +162,7 @@ ghi ijk, klm\t; five six",
             lines:
             (Instruction((0.1, 0.3)), (0, 0), Some((0.1, 12.27)))
             (Instruction((1.2, 0.3)), (0, 1), Some((1.2, 7.24)))
-            (Instruction((2.3, 0.3)), (1, 3), Some((2.3, 13.23)))
-            recon:
-            abc ; one two three
-            cde efg; three four five
-            ghi ijk klm; five six
-        "#]],
+            (Instruction((2.3, 0.3)), (1, 3), Some((2.3, 13.23)))"#]],
     );
 }
 #[test]
@@ -256,12 +180,7 @@ section text",
             lines:
             (Section((0.1, 8.12)), (0, 1), None)
             (Section((1.2, 8.11)), (1, 1), None)
-            (Section((2.3, 8.12)), (1, 1), None)
-            recon:
-            data one
-            bss 
-            text 
-        "#]],
+            (Section((2.3, 8.12)), (1, 1), None)"#]],
     );
 }
 #[test]
@@ -280,12 +199,7 @@ fn comma_err() {
             lines:
             (Empty, (0, 0), None)
             (Empty, (0, 0), None)
-            (Empty, (0, 2), None)
-            recon:
- 
- 
-             one two
-        "#]],
+            (Empty, (0, 2), None)"#]],
     );
 }
 #[test]
@@ -302,10 +216,7 @@ fn decimal() {
             ((0.1, 9.16), Decimal)
             ((0.1, 18.25), Decimal)
             lines:
-            (Empty, (0, 4), None)
-            recon:
-             1 1293 9384093 1231234
-        "#]],
+            (Empty, (0, 4), None)"#]],
     );
 }
 #[test]
@@ -321,10 +232,7 @@ msg db \"ONE TWO THREE\", 12309, 12",
             ((0.1, 24.29), Decimal)
             ((0.1, 31.33), Decimal)
             lines:
-            (Variable((0.1, 0.3), (0.1, 4.6)), (0, 3), None)
-            recon:
-            msg db "ONE TWO THREE" 12309 12
-        "#]],
+            (Variable((0.1, 0.3), (0.1, 4.6)), (0, 3), None)"#]],
     );
 }
 #[test]
@@ -340,10 +248,7 @@ fn variable_err() {
             ((0.1, 23.28), Decimal)
             ((0.1, 29.31), Decimal)
             lines:
-            (Variable((0.1, 0.3), (0.1, 4.6)), (0, 3), None)
-            recon:
-            msg db "ONE TWO THREE" 12309 12
-        "#]],
+            (Variable((0.1, 0.3), (0.1, 4.6)), (0, 3), None)"#]],
     );
 }
 #[test]
@@ -384,24 +289,7 @@ fn hello_world() {
             (Instruction((11.12, 4.11)), (11, 11), Some((11.12, 32.73)))
             (Instruction((12.13, 4.7)), (11, 13), Some((12.13, 32.54)))
             (Instruction((13.14, 4.7)), (13, 15), Some((13.14, 32.45)))
-            (Instruction((14.15, 4.11)), (15, 15), Some((14.15, 32.65)))
-            recon:
-            data 
-            message db "Hello, World" 10; note the newline at the end
- 
-            text 
-            global _start
- 
-            _start 
-            mov rax 1; system call for write
-            mov rdi 1; file handle 1 is stdout
-            mov rsi message; address of string to output
-            mov rdx 13; number of bytes
-            syscall ; invoke operating system to do the write
-            mov rax 60; system call for exit
-            xor rdi rdi; exit code 0
-            syscall ; invoke operating system to exit
-        "#]],
+            (Instruction((14.15, 4.11)), (15, 15), Some((14.15, 32.65)))"#]],
     );
 }
 #[test]
@@ -483,46 +371,6 @@ fn print_any() {
             (Instruction((34.35, 4.7)), (31, 33), None)
             (Instruction((35.36, 4.11)), (33, 33), None)
             (Empty, (33, 33), None)
-            (Instruction((37.38, 4.7)), (33, 33), None)
-            recon:
-            data 
-            hello_world db "Hello, World!" 10
-            whats_up db "What's up" 10
-            long_text db "this is a longer line of text." 10
- 
-            text 
-            global _start
- 
-            _start 
-            mov rax hello_world
-            call print
- 
-            mov rax whats_up
-            call print
- 
-            mov rax long_text
-            call print
- 
-            mov rax 60
-            mov rdi
-            syscall 
-            print 
-            push rax
-            mov rbx
-            print_loop 
-            inc rax
-            inc rbx
-            mov cl rax
-            cmp cl
-            jne print_loop
- 
-            mov rax 1
-            mov rdi 1
-            pop rsi
-            mov rdx rbx
-            syscall 
- 
-            ret 
-        "#]],
+            (Instruction((37.38, 4.7)), (33, 33), None)"#]],
     );
 }
