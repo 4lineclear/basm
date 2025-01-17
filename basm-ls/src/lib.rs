@@ -10,17 +10,20 @@ use tower_lsp::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
         DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
         DocumentDiagnosticReportResult, DocumentFormattingParams, DocumentSymbolParams,
-        DocumentSymbolResponse, FullDocumentDiagnosticReport, InitializeParams, InitializeResult,
-        InitializedParams, MessageType, OneOf, Position, PositionEncodingKind, Range,
-        RelatedFullDocumentDiagnosticReport, SemanticToken, SemanticTokens,
-        SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-        SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-        ServerCapabilities, ServerInfo, TextDocumentSyncKind, TextEdit, Url,
+        DocumentSymbolResponse, FormattingOptions, FullDocumentDiagnosticReport, InitializeParams,
+        InitializeResult, InitializedParams, MessageType, OneOf, Position, PositionEncodingKind,
+        Range, RelatedFullDocumentDiagnosticReport, SemanticToken, SemanticTokens,
+        SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensFullOptions,
+        SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+        SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncKind,
+        TextEdit, Url,
     },
     Client, LanguageServer,
 };
 
 use semantic_tokens::{TOKEN_MODS, TOKEN_TYPES};
+
+mod semantic_tokens;
 
 #[derive(Debug)]
 pub struct Backend {
@@ -109,11 +112,38 @@ impl Document {
         }
 
         self.err_iter().map(diagnostic).collect()
-        // semantic_tokens::semantic_tokens(&self.lex)
+    }
+    // TODO: add partial formatting
+    fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {
+        let _ = opts;
+        let trim_end = self.source.lines().enumerate().flat_map(|(line, s)| {
+            let new_text = s.trim_end().to_owned();
+            if new_text.len() == s.len() {
+                return None;
+            }
+            Some(TextEdit {
+                range: line_range(line as u32, 0, s.len() as u32),
+                new_text,
+            })
+        });
+        let drf = self.lit_iter().into_iter().flat_map(|(line, span, lit)| {
+            let Literal::Deref = lit else {
+                return None;
+            };
+            let new_text = span
+                .slice(self.lex.line_src(line as usize))
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .to_owned();
+            Some(TextEdit {
+                range: line_range(line, span.from + 1, span.to - 1),
+                new_text,
+            })
+        });
+        trim_end.chain(drf).collect()
     }
 }
-
-mod semantic_tokens;
 
 fn capabilities() -> ServerCapabilities {
     ServerCapabilities {
@@ -128,7 +158,7 @@ fn capabilities() -> ServerCapabilities {
                     token_types: TOKEN_TYPES.to_vec(),
                     token_modifiers: TOKEN_MODS.into(),
                 },
-                full: Some(SemanticTokensFullOptions::Bool(true)),
+                full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
                 ..Default::default()
             },
         )),
@@ -183,27 +213,18 @@ impl LanguageServer for Backend {
         })))
     }
 
+    async fn semantic_tokens_full_delta(
+        &self,
+        params: SemanticTokensDeltaParams,
+    ) -> Result<Option<SemanticTokensFullDeltaResult>> {
+        self.info(&format!("{params:#?}")).await;
+        Ok(None)
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        let doc = self.get_doc(&params.text_document.uri)?;
         Ok(Some(
-            doc.lit_iter()
-                .into_iter()
-                .flat_map(|(line, span, lit)| {
-                    let Literal::Deref = lit else {
-                        return None;
-                    };
-                    let new_text = span
-                        .slice(doc.lex.line_src(line as usize))
-                        .trim_start_matches('[')
-                        .trim_end_matches(']')
-                        .trim()
-                        .to_owned();
-                    Some(TextEdit {
-                        range: line_range(line, span.from + 1, span.to - 1),
-                        new_text,
-                    })
-                })
-                .collect(),
+            self.get_doc(&params.text_document.uri)?
+                .formatting(params.options),
         ))
     }
 

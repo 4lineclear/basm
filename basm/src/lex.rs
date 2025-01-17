@@ -351,7 +351,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn decimal(&mut self, start: u32) -> u32 {
-        self.until(start, |ch| matches!(ch, '0'..='9' | '_'))
+        self.until(start, |ch| matches!(ch, '0'..='9' | '_' | '.'))
     }
 
     fn octal(&mut self, start: u32) -> u32 {

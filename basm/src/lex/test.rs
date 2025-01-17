@@ -415,3 +415,19 @@ three [  12309 nooooo]
             (Instruction((0, 5)), (2, 4), (2, 4), None)"#]],
     );
 }
+
+#[test]
+fn float() {
+    check(
+        "\
+0.123.123.123
+",
+        expect![[r#"
+            errors:
+
+            literals:
+            ((0, 13), Decimal)
+            lines:
+            (Empty, (0, 1), (0, 0), None)"#]],
+    );
+}
