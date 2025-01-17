@@ -1,0 +1,12 @@
+2025-01-17T19:10:28.247181Z  INFO basm_ls: cbnf-ls initialized
+2025-01-17T19:10:52.203629Z  INFO tower_lsp::service::layers: shutdown request received, shutting down
+2025-01-17T19:10:52.203797Z  INFO basm_ls: cbnf-ls shutdown
+2025-01-17T19:10:52.717877Z  INFO basm_ls: cbnf-ls initialized
+2025-01-17T19:12:19.195740Z  INFO tower_lsp::service::layers: shutdown request received, shutting down
+2025-01-17T19:12:19.195956Z  INFO basm_ls: cbnf-ls shutdown
+2025-01-17T19:12:22.281598Z  INFO tower_lsp::service::layers: exit notification received, stopping
+2025-01-17T19:12:22.299183Z  INFO basm_ls: server stopping
+2025-01-17T19:14:08.114206Z  INFO basm_ls: cbnf-ls initialized
+2025-01-17T19:16:46.884892Z  INFO tower_lsp::service::layers: shutdown request received, shutting down
+2025-01-17T19:16:46.885173Z  INFO basm_ls: cbnf-ls shutdown
+2025-01-17T19:16:47.395772Z  INFO basm_ls: cbnf-ls initialized

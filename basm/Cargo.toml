@@ -1,0 +1,17 @@
+[package]
+name = "basm"
+version = "0.0.1"
+edition = "2021"
+# unicode
+# unicode-ident = "1.0"
+# unicode-normalization = "0.1"
+# unicode-properties = "0.1"
+# ustr = "1.0"
+
+# etc
+# regex-syntax = "0.8"
+# indexmap = "2.6"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+expect-test = "1.5"

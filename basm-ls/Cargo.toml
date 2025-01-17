@@ -1,0 +1,26 @@
+[package]
+name = "basm-ls"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+basm = { path = "../basm/" }
+# # server
+# tower-lsp = "0.20"
+# tokio = { version = "1.43", features = ["full"] }
+# # logging
+# # tracing = "0.1"
+# # tracing-appender = "0.2"
+# # tracing-subscriber = "0.3"
+# # etc
+# dashmap = "6"
+#
+# server
+tower-lsp = "0.20"
+tokio = { version = "1.43", features = ["full"] }
+# logging
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = "0.3"
+# etc
+dashmap = "6"
