@@ -431,3 +431,25 @@ fn float() {
             (Empty, (0, 1), (0, 0), None)"#]],
     );
 }
+
+/// out of order
+#[test]
+fn ooo() {
+    check(
+        "\
+123  yeah
+123, yeah
+",
+        expect![[r#"
+            errors:
+            ((3, 5), MissingComma)
+            literals:
+            ((0, 3), Decimal)
+            ((5, 9), Ident)
+            ((0, 3), Decimal)
+            ((5, 9), Ident)
+            lines:
+            (Empty, (0, 2), (0, 1), None)
+            (Empty, (2, 4), (1, 1), None)"#]],
+    );
+}

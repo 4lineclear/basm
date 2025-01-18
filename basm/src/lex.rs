@@ -53,7 +53,7 @@ where
 
     pub fn line_src(&self, line: usize) -> &str {
         let al = &self.lines[line];
-        &self.src.as_ref()[al.start as usize..al.end as usize]
+        &self.src.as_ref()[al.start as usize..al.end as usize - 1]
     }
 }
 
@@ -218,9 +218,9 @@ impl<'a> Lexer<'a> {
                     let end = self.ident(pos);
                     let span = Span::new(pos, end);
                     self.check_comma(&mut kind, last_comma, lit_start, span);
-                    match (post_comma, &kind) {
-                        (false, LineKind::Empty) => kind = LineKind::Instruction(span),
-                        (false, LineKind::Instruction(s0))
+                    match (post_comma, &kind, self.literals.len() - lit_start as usize) {
+                        (false, LineKind::Empty, 0) => kind = LineKind::Instruction(span),
+                        (false, LineKind::Instruction(s0), 0)
                             if self.slice(self.line, *s0) == "section" =>
                         {
                             kind = LineKind::Section(*s0, span);

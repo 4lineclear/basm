@@ -4,6 +4,7 @@ use basm::lex::{LexOutput, LineKind, Span};
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
 
 #[allow(unused)]
+#[derive(Debug)]
 enum TypeKind {
     Namespace,
     Type,
@@ -135,6 +136,11 @@ impl Tokenizer {
     fn push(&mut self, line: u32, span: Span, kind: TypeKind, modi: impl Into<TokenModded>) {
         let mut start = span.from;
         if self.prev_line == line {
+            debug_assert!(
+                start >= self.prev_end,
+                "{start} < {}, {span:?} {kind:?}",
+                self.prev_end
+            );
             start -= self.prev_end;
         }
         self.inner.push(SemanticToken {

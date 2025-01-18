@@ -115,33 +115,61 @@ impl Document {
     }
     // TODO: add partial formatting
     fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {
+        use basm::lex::LineKind::*;
         let _ = opts;
         let trim_end = self.source.lines().enumerate().flat_map(|(line, s)| {
-            let new_text = s.trim_end().to_owned();
-            if new_text.len() == s.len() {
+            let trim = s.trim_end().to_owned();
+            if trim.len() == s.len() {
                 return None;
             }
             Some(TextEdit {
-                range: line_range(line as u32, 0, s.len() as u32),
-                new_text,
+                range: line_range(line as u32, trim.len() as u32, s.len() as u32),
+                new_text: String::new(),
             })
+        });
+        let lines = self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
+            let _src = self.lex.line_src(line);
+            let line = line as u32;
+            // let trim = s.trim_end().to_owned();
+            // if trim.len() == s.len() {
+            //     return None;
+            // }
+            // Some(TextEdit {
+            //     range: line_range(line as u32, trim.len() as u32, s.len() as u32),
+            //     new_text: String::new(),
+            // })
+            match al.line.kind {
+                Empty => None,
+                Label(_) | Section(_, _) => None,
+                Instruction(n) | Variable(n, _) if n.from > 4 => Some(TextEdit {
+                    range: line_range(line, 0, n.from - 4),
+                    new_text: String::new(),
+                }),
+                Instruction(n) | Variable(n, _) if n.from < 4 => Some(TextEdit {
+                    range: line_range(line, 0, 0),
+                    new_text: " ".repeat(4 - n.from as usize).to_owned(),
+                }),
+                _ => None,
+            }
         });
         let drf = self.lit_iter().into_iter().flat_map(|(line, span, lit)| {
             let Literal::Deref = lit else {
                 return None;
             };
-            let new_text = span
+            let src = span
                 .slice(self.lex.line_src(line as usize))
                 .trim_start_matches('[')
-                .trim_end_matches(']')
-                .trim()
-                .to_owned();
+                .trim_end_matches(']');
+            let new_text = src.trim().to_owned();
+            if new_text == src {
+                return None;
+            }
             Some(TextEdit {
                 range: line_range(line, span.from + 1, span.to - 1),
                 new_text,
             })
         });
-        trim_end.chain(drf).collect()
+        trim_end.chain(lines).chain(drf).collect()
     }
 }
 
