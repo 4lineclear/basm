@@ -1,7 +1,8 @@
 use std::ops::BitAnd;
+use std::sync::Arc;
 
 use basm::lex::{LexOutput, LineKind, Span};
-use tower_lsp::lsp_types::{SemanticToken, SemanticTokenModifier, SemanticTokenType};
+use tower_lsp::lsp_types::{Range, SemanticToken, SemanticTokenModifier, SemanticTokenType};
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -155,12 +156,18 @@ impl Tokenizer {
     }
 }
 
-pub(crate) fn semantic_tokens<S: AsRef<str>>(lex: &LexOutput<S>) -> Vec<SemanticToken> {
+pub(crate) fn semantic_tokens(
+    lex: &LexOutput<Arc<str>>,
+    range: Option<Range>,
+) -> Vec<SemanticToken> {
     use LineKind::*;
     let mut data = Tokenizer::default();
 
     for (line, al) in lex.lines.iter().enumerate() {
         let line = line as u32;
+        if range.is_some_and(|range| line < range.start.line || line > range.end.line) {
+            continue;
+        }
         match al.line.kind {
             Empty => (),
             Label(name) => {

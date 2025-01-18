@@ -8,6 +8,9 @@ mod test;
 
 // TODO: create float lexing
 
+// TODO: create a testing system that is synchronized between
+// the lexing testing and the lsp's semantic token testing.
+
 #[derive(Debug)]
 pub struct LexOutput<S> {
     pub src: S,
@@ -59,8 +62,8 @@ where
 
 #[derive(Debug, Clone, Copy)]
 pub struct AssembledLine {
-    pub start: u32,
-    pub end: u32,
+    start: u32,
+    end: u32,
     pub line: Line,
 }
 
@@ -153,8 +156,6 @@ type Charred<'a> = Peekable<CharIndices<'a>>;
 
 #[derive(Debug)]
 pub struct Lexer<'a> {
-    src: &'a str,
-    line: u32,
     lines: Lines<'a>,
     line_starts: Vec<u32>,
     errors: Vec<(Span, LineError)>,
@@ -165,8 +166,6 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
         Self {
-            src,
-            line: 0,
             lines: src.lines(),
             errors: Vec::new(),
             line_starts: vec![0],
@@ -174,21 +173,14 @@ impl<'a> Lexer<'a> {
             chars: "".char_indices().peekable(),
         }
     }
-    pub fn src(&self) -> &str {
-        self.src
-    }
-    pub fn errors(&self) -> &[(Span, LineError)] {
-        &self.errors
-    }
-    pub fn literals(&self) -> &[(Span, Literal)] {
-        &self.literals
-    }
     pub fn line(&mut self) -> Option<Line> {
         let line = self.lines.next()?;
+        Some(self.line_inner(line))
+    }
+    fn line_inner(&mut self, line: &'a str) -> Line {
         self.chars = line.char_indices().peekable();
 
         let mut last_comma = 0;
-        let mut post_comma = false;
         let mut deref = None;
         let mut comment = None;
         let mut kind = LineKind::Empty;
@@ -201,37 +193,24 @@ impl<'a> Lexer<'a> {
 
         while let Some((pos, ch)) = self.chars.next() {
             let pos = pos as u32;
-            if ch == ',' {
-                last_comma = 0;
-                post_comma = true;
-                continue;
-            }
-
-            if let ' ' | '\t' = ch {
-                continue;
-            }
-
-            last_comma += 1;
 
             match ch {
+                ',' => last_comma = 0,
+                ' ' | '\t' => (),
                 'a'..='z' | 'A'..='Z' | '_' => {
-                    let end = self.ident(pos);
-                    let span = Span::new(pos, end);
-                    self.check_comma(&mut kind, last_comma, lit_start, span);
-                    match (post_comma, &kind, self.literals.len() - lit_start as usize) {
-                        (false, LineKind::Empty, 0) => kind = LineKind::Instruction(span),
-                        (false, LineKind::Instruction(s0), 0)
-                            if self.slice(self.line, *s0) == "section" =>
-                        {
+                    let span = Span::new(pos, self.ident(pos));
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
+                    match (&kind, self.literals.len() - lit_start as usize) {
+                        (LineKind::Empty, 0) => kind = LineKind::Instruction(span),
+                        (LineKind::Instruction(s0), 0) if s0.slice(line) == "section" => {
                             kind = LineKind::Section(*s0, span);
                         }
                         _ => self.literals.push((span, Literal::Ident)),
                     };
                 }
                 '"' => {
-                    let end = self.string(pos);
-                    let span = Span::new(pos, end);
-                    self.check_comma(&mut kind, last_comma, lit_start, span);
+                    let span = Span::new(pos, self.string(pos));
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
                     self.literals.push((span, Literal::String));
                 }
                 ':' => {
@@ -243,31 +222,21 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '0'..='9' => {
-                    let end = match self
-                        .chars
-                        .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
-                    {
-                        Some((_, 'b')) => self.binary(pos),
-                        Some((_, 'o')) => self.octal(pos),
-                        Some((_, 'x')) => self.hex(pos),
-                        _ => self.decimal(pos),
-                    };
-                    let span = Span::new(pos, end);
-                    self.check_comma(&mut kind, last_comma, lit_start, span);
-                    self.literals.push((span, Literal::Decimal));
+                    let (span, lit) = self.digit(pos, ch);
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
+                    self.literals.push((span, lit));
                 }
                 '[' => {
                     if let Some((_, deref)) = deref {
                         self.errors
                             .push((Span::point(deref), LineError::UnknownChar(ch)));
                     }
-                    last_comma -= 1;
-                    deref = Some((self.literals().len(), pos));
+                    deref = Some((self.literals.len(), pos));
                 }
                 ']' if deref.is_some() => {
-                    let (orig_lits, deref_open) = deref.unwrap();
+                    let (orig, deref_open) = deref.unwrap();
                     let span = Span::new(deref_open, pos + 1);
-                    match &mut self.literals[orig_lits..] {
+                    match &mut self.literals[orig..] {
                         [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
                         [.., _] => self.errors.push((span, LineError::MuddyDeref)),
                         [] => self.errors.push((span, LineError::EmptyDeref)),
@@ -286,48 +255,37 @@ impl<'a> Lexer<'a> {
         if let Some((_, p)) = deref {
             self.errors.push((Span::point(p), LineError::UnclosedDeref));
         }
-        self.line += 1;
-        Some(Line {
+        Line {
             kind,
             errors: (err_start, self.errors.len() as u32),
             literals: (lit_start, self.literals.len() as u32),
             comment,
-        })
-    }
-
-    #[allow(unused)]
-    fn skip_spaces(&mut self) -> u32 {
-        let mut last = 0;
-        while let Some((i, ' ' | '\t')) = self.chars.peek().copied() {
-            last = i as u32;
-            self.chars.next();
         }
-        last + 1
     }
 
-    fn check_comma(&mut self, kind: &mut LineKind, last_comma: i32, lit_start: u32, span: Span) {
-        match &self.literals()[lit_start as usize..] {
-            [(s1, Literal::Ident)] if last_comma > 1 => {
+    fn check_comma(
+        &mut self,
+        kind: &mut LineKind,
+        last_comma: &mut u32,
+        lit_start: u32,
+        span: Span,
+    ) {
+        match &self.literals[lit_start as usize..] {
+            [(s1, Literal::Ident)] if *last_comma > 0 => {
                 if let LineKind::Instruction(s0) = kind {
                     *kind = LineKind::Variable(*s0, *s1);
                 }
                 self.literals.pop();
             }
-            [.., l1] if last_comma > 1 => {
+            [.., l1] if *last_comma > 0 => {
                 self.errors
                     .push((l1.0.between(span), LineError::MissingComma));
             }
             _ => (),
         }
+        *last_comma += 1;
     }
 
-    fn slice(&self, line: u32, span: Span) -> &str {
-        let base = self.line_starts[line as usize];
-        let f = base + span.from;
-        let t = base + span.to;
-        debug_assert!(f <= t, "given span was invalid: {span:?}");
-        &self.src()[f as usize..t as usize]
-    }
     fn until(&mut self, start: u32, check: impl Fn(char) -> bool) -> u32 {
         let mut last = start;
         while let Some((i, ch)) = self.chars.peek().copied() {
@@ -345,22 +303,31 @@ impl<'a> Lexer<'a> {
             |ch| matches!(ch, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'),
         )
     }
-
+    fn digit(&mut self, pos: u32, ch: char) -> (Span, Literal) {
+        let (end, lit) = match self
+            .chars
+            .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
+        {
+            Some((_, 'b')) => (self.binary(pos), Literal::Binary),
+            Some((_, 'o')) => (self.octal(pos), Literal::Octal),
+            Some((_, 'x')) => (self.hex(pos), Literal::Hex),
+            _ => (self.decimal(pos), Literal::Decimal),
+        };
+        (Span::new(pos, end), lit)
+    }
     fn hex(&mut self, start: u32) -> u32 {
         self.ident(start)
     }
-
     fn decimal(&mut self, start: u32) -> u32 {
         self.until(start, |ch| matches!(ch, '0'..='9' | '_' | '.'))
     }
-
     fn octal(&mut self, start: u32) -> u32 {
         self.until(start, |ch| matches!(ch, '0'..='7' | '_'))
     }
-
     fn binary(&mut self, start: u32) -> u32 {
         self.until(start, |ch| matches!(ch, '0' | '1' | '_'))
     }
+    // TODO: create better string parsing
     fn string(&mut self, start: u32) -> u32 {
         let mut last = start;
         loop {

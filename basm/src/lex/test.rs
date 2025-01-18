@@ -6,11 +6,14 @@ fn debug_iter<D: std::fmt::Debug>(iter: impl Iterator<Item = D>) -> String {
         .join("\n")
 }
 
+// TODO: create a better stringify that assembles lines, errors, and literals
+// into the actual order they appear in.
 fn check(src: &str, expect: Expect) {
     let mut lexer = super::Lexer::new(src);
-    let lins: Vec<_> = std::iter::from_fn(|| lexer.line()).collect();
+    let lines: Vec<_> = std::iter::from_fn(|| lexer.line()).collect();
     let lines = debug_iter(
-        lins.iter()
+        lines
+            .iter()
             .map(|l| (l.kind, l.literals, l.errors, l.comment)),
     );
     let errors = debug_iter(lexer.errors.iter());
@@ -381,9 +384,9 @@ fn numerics() {
             ((8, 16), Decimal)
             ((18, 28), Decimal)
             ((30, 55), Decimal)
-            ((0, 20), Decimal)
-            ((22, 34), Decimal)
-            ((36, 47), Decimal)
+            ((0, 20), Hex)
+            ((22, 34), Binary)
+            ((36, 47), Octal)
             lines:
             (Empty, (0, 4), (0, 0), None)
             (Empty, (4, 7), (0, 0), None)"#]],
@@ -451,5 +454,22 @@ fn ooo() {
             lines:
             (Empty, (0, 2), (0, 1), None)
             (Empty, (2, 4), (1, 1), None)"#]],
+    );
+}
+#[test]
+fn yeah() {
+    check(
+        "\
+; one two three
+    ; one two three
+",
+        expect![[r#"
+            errors:
+
+            literals:
+
+            lines:
+            (Empty, (0, 0), (0, 0), Some((0, 15)))
+            (Empty, (0, 0), (0, 0), Some((4, 19)))"#]],
     );
 }

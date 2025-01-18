@@ -24,11 +24,10 @@ print:
     mov rbx, 0
 print_loop:
     inc rax
-    inc rbx
-    mov cl, [rax]
+    inc rbx ; this is a comment
+    mov cl, [rax] ; s yeah;
     cmp cl, 0
     jne print_loop
-
     mov rax, 1
     mov rdi, 1
     pop rsi

@@ -14,15 +14,18 @@ use tower_lsp::{
         InitializeResult, InitializedParams, MessageType, OneOf, Position, PositionEncodingKind,
         Range, RelatedFullDocumentDiagnosticReport, SemanticToken, SemanticTokens,
         SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensFullOptions,
-        SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+        SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+        SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
         SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncKind,
         TextEdit, Url,
     },
     Client, LanguageServer,
 };
 
+use formatting::format_line;
 use semantic_tokens::{TOKEN_MODS, TOKEN_TYPES};
 
+mod formatting;
 mod semantic_tokens;
 
 #[derive(Debug)]
@@ -73,6 +76,7 @@ impl Document {
         let lex = LexOutput::from(source.clone());
         Self { source, lex }
     }
+    #[allow(unused)]
     fn lit_iter(&self) -> impl Iterator<Item = (u32, &Span, &Literal)> {
         self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
             al.line
@@ -90,8 +94,8 @@ impl Document {
         })
     }
     // TODO: add partial & delta semantic token changes
-    fn semantic_tokens(&self) -> Vec<SemanticToken> {
-        semantic_tokens::semantic_tokens(&self.lex)
+    fn semantic_tokens(&self, range: Option<Range>) -> Vec<SemanticToken> {
+        semantic_tokens::semantic_tokens(&self.lex, range)
     }
     fn diagnostics(&self) -> Vec<Diagnostic> {
         use basm::lex::LineError::*;
@@ -115,61 +119,15 @@ impl Document {
     }
     // TODO: add partial formatting
     fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {
-        use basm::lex::LineKind::*;
         let _ = opts;
-        let trim_end = self.source.lines().enumerate().flat_map(|(line, s)| {
-            let trim = s.trim_end().to_owned();
-            if trim.len() == s.len() {
-                return None;
-            }
-            Some(TextEdit {
-                range: line_range(line as u32, trim.len() as u32, s.len() as u32),
-                new_text: String::new(),
-            })
-        });
-        let lines = self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
-            let _src = self.lex.line_src(line);
-            let line = line as u32;
-            // let trim = s.trim_end().to_owned();
-            // if trim.len() == s.len() {
-            //     return None;
-            // }
-            // Some(TextEdit {
-            //     range: line_range(line as u32, trim.len() as u32, s.len() as u32),
-            //     new_text: String::new(),
-            // })
-            match al.line.kind {
-                Empty => None,
-                Label(_) | Section(_, _) => None,
-                Instruction(n) | Variable(n, _) if n.from > 4 => Some(TextEdit {
-                    range: line_range(line, 0, n.from - 4),
-                    new_text: String::new(),
-                }),
-                Instruction(n) | Variable(n, _) if n.from < 4 => Some(TextEdit {
-                    range: line_range(line, 0, 0),
-                    new_text: " ".repeat(4 - n.from as usize).to_owned(),
-                }),
-                _ => None,
-            }
-        });
-        let drf = self.lit_iter().into_iter().flat_map(|(line, span, lit)| {
-            let Literal::Deref = lit else {
-                return None;
-            };
-            let src = span
-                .slice(self.lex.line_src(line as usize))
-                .trim_start_matches('[')
-                .trim_end_matches(']');
-            let new_text = src.trim().to_owned();
-            if new_text == src {
-                return None;
-            }
-            Some(TextEdit {
-                range: line_range(line, span.from + 1, span.to - 1),
-                new_text,
-            })
-        });
-        trim_end.chain(lines).chain(drf).collect()
+        self.lex
+            .lines
+            .iter()
+            .enumerate()
+            .map(|(line, al)| format_line(line, al, &self.lex))
+            .flatten()
+            .flatten()
+            .collect()
     }
 }
 
@@ -186,6 +144,7 @@ fn capabilities() -> ServerCapabilities {
                     token_types: TOKEN_TYPES.to_vec(),
                     token_modifiers: TOKEN_MODS.into(),
                 },
+                range: Some(true),
                 full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
                 ..Default::default()
             },
@@ -231,13 +190,27 @@ impl LanguageServer for Backend {
         ))
     }
 
+    async fn semantic_tokens_range(
+        &self,
+        params: SemanticTokensRangeParams,
+    ) -> Result<Option<SemanticTokensRangeResult>> {
+        self.info("semantic token partial request").await;
+        Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
+            result_id: None,
+            data: self
+                .get_doc(&params.text_document.uri)?
+                .semantic_tokens(Some(params.range)),
+        })))
+    }
     async fn semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data: self.get_doc(&params.text_document.uri)?.semantic_tokens(),
+            data: self
+                .get_doc(&params.text_document.uri)?
+                .semantic_tokens(None),
         })))
     }
 

@@ -1,4 +1,5 @@
 pub mod lex;
+pub mod parse;
 
 // type LineResult = Result<Line, >
 //
