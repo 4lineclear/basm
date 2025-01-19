@@ -162,44 +162,33 @@ pub(crate) fn semantic_tokens(
 ) -> Vec<SemanticToken> {
     use LineKind::*;
     let mut data = Tokenizer::default();
+    // let mut ident_buf = Vec::new();
 
     for (line, al) in lex.lines.iter().enumerate() {
         let line = line as u32;
         if range.is_some_and(|range| line < range.start.line || line > range.end.line) {
             continue;
         }
-        match al.line.kind {
-            Empty => (),
-            Label(name) => {
-                data.push(line, name, TypeKind::Function, TokenMod::Declaration);
-            }
-            Section(sec, name) => {
-                data.push(line, sec, TypeKind::Keyword, TokenMod::None);
-                data.push(
-                    line,
-                    name,
-                    TypeKind::Parameter,
-                    TokenMod::Declaration & TokenMod::Definition,
-                );
-            }
-            Instruction(span) => {
-                let kind = match span.slice(lex.line_src(line as usize)) {
-                    "global" => TypeKind::Keyword,
-                    _ => TypeKind::Function,
-                };
-                data.push(line, span, kind, TokenMod::None);
-            }
-            Variable(name, var_type) => {
-                data.push(line, name, TypeKind::Variable, TokenMod::None);
-                data.push(line, var_type, TypeKind::Type, TokenMod::None);
-            }
-        }
+        let mut idents = 0;
+        // let map = |s| al.line.slice_lit(&lex.literals)[s as usize].0;
         for &(lspan, l) in al.line.slice_lit(&lex.literals) {
             use basm::lex::Literal::*;
-            let kind = match l {
-                Hex | Octal | Binary | Decimal | Float => TypeKind::Number,
-                Ident => TypeKind::Variable,
-                String => TypeKind::String,
+            idents += (Ident == l) as u32;
+            let (kind, modi) = match l {
+                Hex | Octal | Binary | Decimal => (TypeKind::Number, TokenMod::Static as u32),
+                Ident => match (al.line.kind, idents) {
+                    (Label, 1) => (TypeKind::Function, TokenMod::Declaration as u32),
+                    (Section | Global, 1) => (
+                        TypeKind::Keyword,
+                        TokenMod::Declaration & TokenMod::Definition,
+                    ),
+                    (Section, 2) => (TypeKind::Parameter, TokenMod::None as u32),
+                    (Instruction, 1) => (TypeKind::Function, TokenMod::None as u32),
+                    (Variable, 1) => (TypeKind::Variable, TokenMod::None as u32),
+                    (Variable, 2) => (TypeKind::Type, TokenMod::None as u32),
+                    _ => (TypeKind::Variable, TokenMod::None as u32),
+                },
+                String => (TypeKind::String, TokenMod::None as u32),
                 Deref => {
                     data.push(
                         line,
@@ -221,11 +210,12 @@ pub(crate) fn semantic_tokens(
                     );
                     continue;
                 }
-                Other | Whitespace => {
+                Colon => (TypeKind::Operator, TokenMod::None as u32),
+                Other | Whitespace | Comma => {
                     continue;
                 }
             };
-            data.push(line, lspan, kind, TokenMod::None);
+            data.push(line, lspan, kind, modi);
         }
         if let Some(comment) = al.line.comment {
             data.push(line, comment, TypeKind::Comment, TokenMod::None);

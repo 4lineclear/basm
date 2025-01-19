@@ -69,11 +69,11 @@ pub fn fmt_line(ctx: LineCtx<'_>) -> impl Iterator<Item = Edit> + '_ {
     let trim_start = match kind {
         // no need to trim the start of the entire thing is ws
         LineKind::Empty if errors.is_empty() && literals.is_empty() && comment.is_none() => false,
-        LineKind::Empty | LineKind::Label(_) | LineKind::Section(_, _) => true,
-        LineKind::Instruction(_) | LineKind::Variable(_, _) => false,
+        LineKind::Empty | LineKind::Label | LineKind::Section => true,
+        LineKind::Instruction | LineKind::Variable | LineKind::Global => false,
     };
     let (start, end) = try_trim(line_src, trim_start);
-    let pad_start = if let LineKind::Instruction(_) | LineKind::Variable(_, _) = kind {
+    let pad_start = if let LineKind::Instruction | LineKind::Variable = kind {
         try_pad(line_src, fmt.tab_size).map(edit)
     } else {
         None

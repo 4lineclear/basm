@@ -34,7 +34,7 @@ fn fmt_line(out: &mut String, ctx: basm_fmt::LineCtx<'_>) {
         line_src,
         errors,
         literals,
-        fmt,
+        // fmt,
         ..
     } = ctx;
     if errors.len() != 0 {
@@ -42,28 +42,29 @@ fn fmt_line(out: &mut String, ctx: basm_fmt::LineCtx<'_>) {
         out.push('\n');
         return;
     }
-    let spaces = " ".repeat(fmt.tab_size as usize);
-    match kind {
-        Empty => (),
-        Label(span) => {
-            out.push_str(span.slice(line_src));
-        }
-        Section(span, span1) => {
-            out.push_str(span.slice(line_src));
-            out.push_str(" ");
-            out.push_str(span1.slice(line_src));
-        }
-        Instruction(span) => {
-            out.push_str(&spaces);
-            out.push_str(span.slice(line_src));
-        }
-        Variable(span, span1) => {
-            out.push_str(&spaces);
-            out.push_str(span.slice(line_src));
-            out.push_str(" ");
-            out.push_str(span1.slice(line_src));
-        }
-    };
+    // let spaces = " ".repeat(fmt.tab_size as usize);
+    // let slice = |s| literals[s as usize].0.slice(line_src);
+    // match kind {
+    //     Empty => (),
+    //     Label(span) => {
+    //         out.push_str(slice(span));
+    //     }
+    //     Section(span, span1) => {
+    //         out.push_str(slice(span));
+    //         out.push_str(" ");
+    //         out.push_str(slice(span1));
+    //     }
+    //     Instruction(span) => {
+    //         out.push_str(&spaces);
+    //         out.push_str(slice(span));
+    //     }
+    //     Variable(span, span1) => {
+    //         out.push_str(&spaces);
+    //         out.push_str(slice(span));
+    //         out.push_str(" ");
+    //         out.push_str(slice(span1));
+    //     }
+    // };
     if literals.len() != 0 {
         if !matches!(kind, Empty) {
             out.push_str(" ");
