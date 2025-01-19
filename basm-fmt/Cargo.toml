@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 basm = { path = "../basm/" }
+# ahash = { workspace = true }
 
 [dev-dependencies]
 # pretty_assertions = "1.4"

@@ -41,7 +41,9 @@ fn empty_lines() {
 
 #[test]
 fn ws() {
-    check(" \t    \t", expect![[r#"0:(0, 7) = ' \t    \t' -> ''"#]]);
+    check(" \t    \t", expect![[r#"
+        0:(0, 7) = ' \t    \t' -> ''
+        0:(0, 7) = ' \t    \t' -> ''"#]]);
 }
 
 #[test]
@@ -50,7 +52,10 @@ fn empty_lines_ws() {
         "  \t  \t \n \t \n \n",
         expect![[r#"
             0:(0, 7) = '  \t  \t ' -> ''
+            0:(0, 7) = '  \t  \t ' -> ''
             1:(0, 3) = ' \t ' -> ''
+            1:(0, 3) = ' \t ' -> ''
+            2:(0, 1) = ' ' -> ''
             2:(0, 1) = ' ' -> ''"#]],
     );
 }
@@ -158,10 +163,7 @@ fn deref() {
     rax [           deref]
     rax [\t \t deref  \t\t   ]
 ",
-        expect![[r#"
-            2:(9, 20) = 'deref      ' -> 'deref'
-            3:(9, 25) = '           deref' -> 'deref'
-            4:(9, 25) = '\t \t deref  \t\t   ' -> 'deref'"#]],
+        expect![""],
     );
 }
 

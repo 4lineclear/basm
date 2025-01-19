@@ -1,3 +1,6 @@
 [workspace]
 members = ["basm-ls", "basm", "basm-fmt"]
 resolver = "2"
+
+[workspace.dependencies]
+ahash = "0.8"

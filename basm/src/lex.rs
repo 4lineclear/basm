@@ -15,7 +15,7 @@ mod test;
 pub struct LexOutput<S> {
     pub src: S,
     pub lines: Vec<AssembledLine>,
-    pub errors: Vec<(Span, LineInfo)>,
+    pub errors: Vec<(Span, LineError)>,
     pub literals: Vec<(Span, Literal)>,
 }
 
@@ -46,6 +46,9 @@ where
 
     pub fn line_src(&self, line: usize) -> &str {
         self.lines[line].line_src(self.src.as_ref())
+    }
+    pub fn line_range(&self, line: usize) -> (u32, u32) {
+        (self.lines[line].start, self.lines[line].end)
     }
 }
 
@@ -79,8 +82,9 @@ impl Line {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Span {
+    // NOTE: 'from' must come before 'to' for proper ordering
     pub from: u32,
     pub to: u32,
 }
@@ -139,18 +143,19 @@ pub enum Literal {
     Ident,
     Deref,
     String,
+    Other,
+    Whitespace,
 }
 
 #[derive(Debug)]
-pub enum LineInfo {
+pub enum LineError {
     MissingComma,
-    UnknownChar(char),
+    // UnknownChar(char),
     UnclosedDeref,
     /// A deref with incorrect token
     EmptyDeref,
     /// A deref with incorrect token
     MuddyDeref,
-    Tab,
 }
 
 type Charred<'a> = Peekable<CharIndices<'a>>;
@@ -159,10 +164,43 @@ type Charred<'a> = Peekable<CharIndices<'a>>;
 pub struct Lexer<'a> {
     lines: Lines<'a>,
     line_starts: Vec<u32>,
-    errors: Vec<(Span, LineInfo)>,
+    errors: Vec<(Span, LineError)>,
     literals: Vec<(Span, Literal)>,
     chars: Charred<'a>,
 }
+
+// struct LexCtx {
+//     last_comma: u32,
+//     deref: Option<(usize, u32)>,
+//     comment: Option<Span>,
+//     kind: LineKind,
+//     err_start: u32,
+//     lit_start: u32,
+//     muddled: bool,
+// }
+//
+// impl LexCtx {
+//     fn check_comma(
+//         &mut self,
+//         span: Span,
+//         literals: &mut Vec<(Span, Literal)>,
+//         errors: &mut Vec<(Span, LineError)>,
+//     ) {
+//         match &literals[self.lit_start as usize..] {
+//             [(s1, Literal::Ident)] if self.last_comma > 0 => {
+//                 if let LineKind::Instruction(s0) = self.kind {
+//                     self.kind = LineKind::Variable(s0, *s1);
+//                 }
+//                 literals.pop();
+//             }
+//             [.., l1] if self.last_comma > 0 => {
+//                 errors.push((l1.0.between(span), LineError::MissingComma));
+//             }
+//             _ => (),
+//         }
+//         self.last_comma += 1;
+//     }
+// }
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
@@ -181,6 +219,7 @@ impl<'a> Lexer<'a> {
     fn line_inner(&mut self, line: &'a str) -> Line {
         self.chars = line.char_indices().peekable();
 
+        let mut muddled = false;
         let mut last_comma = 0;
         let mut deref = None;
         let mut comment = None;
@@ -197,40 +236,43 @@ impl<'a> Lexer<'a> {
 
             match ch {
                 ',' => last_comma = 0,
-                ' ' | '\t' => (),
+                _ if ch.is_whitespace() => self.push_ws(Span::point(pos)),
                 'a'..='z' | 'A'..='Z' | '_' => {
                     let span = Span::new(pos, self.ident(pos));
-                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
-                    match (&kind, self.literals.len() - lit_start as usize) {
-                        (LineKind::Empty, 0) => kind = LineKind::Instruction(span),
-                        (LineKind::Instruction(s0), 0) if s0.slice(line) == "section" => {
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
+                    match (&kind, muddled) {
+                        (LineKind::Empty, false) => kind = LineKind::Instruction(span),
+                        (LineKind::Instruction(s0), false) if s0.slice(line) == "section" => {
                             kind = LineKind::Section(*s0, span);
                         }
-                        _ => self.literals.push((span, Literal::Ident)),
+                        _ => {
+                            self.literals.push((span, Literal::Ident));
+                            muddled = true;
+                        }
                     };
                 }
                 '"' => {
                     let span = Span::new(pos, self.string(pos));
-                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
                     self.literals.push((span, Literal::String));
+                    muddled = true;
                 }
                 ':' => {
                     if let LineKind::Instruction(s) = kind {
                         kind = LineKind::Label(s)
                     } else {
-                        self.errors
-                            .push((Span::point(pos), LineInfo::UnknownChar(ch)))
+                        self.push_other(Span::point(pos), &mut muddled)
                     }
                 }
                 '0'..='9' => {
                     let (span, lit) = self.digit(pos, ch);
-                    self.check_comma(&mut kind, &mut last_comma, lit_start, span);
+                    self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
                     self.literals.push((span, lit));
+                    muddled = true;
                 }
                 '[' => {
                     if let Some((_, deref)) = deref {
-                        self.errors
-                            .push((Span::point(deref), LineInfo::UnknownChar(ch)));
+                        self.push_other(Span::point(deref), &mut muddled)
                     }
                     deref = Some((self.literals.len(), pos));
                 }
@@ -239,8 +281,8 @@ impl<'a> Lexer<'a> {
                     let span = Span::new(deref_open, pos + 1);
                     match &mut self.literals[orig..] {
                         [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
-                        [.., _] => self.errors.push((span, LineInfo::MuddyDeref)),
-                        [] => self.errors.push((span, LineInfo::EmptyDeref)),
+                        [.., _] => self.errors.push((span, LineError::MuddyDeref)),
+                        [] => self.errors.push((span, LineError::EmptyDeref)),
                     }
                     deref = None;
                 }
@@ -248,13 +290,11 @@ impl<'a> Lexer<'a> {
                     comment = Some(Span::new(pos, line.len() as u32));
                     break;
                 }
-                _ => self
-                    .errors
-                    .push((Span::point(pos), LineInfo::UnknownChar(ch))),
+                _ => self.push_other(Span::point(pos), &mut muddled),
             }
         }
         if let Some((_, p)) = deref {
-            self.errors.push((Span::point(p), LineInfo::UnclosedDeref));
+            self.errors.push((Span::point(p), LineError::UnclosedDeref));
         }
         Line {
             kind,
@@ -264,13 +304,34 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn push_other(&mut self, span: Span, muddled: &mut bool) {
+        match &mut self.literals[..] {
+            [.., (s, Literal::Other)] if s.to == span.from => {
+                s.to = span.to;
+            }
+            _ => self.literals.push((span, Literal::Other)),
+        };
+        *muddled = true;
+    }
+
+    fn push_ws(&mut self, span: Span) {
+        match &mut self.literals[..] {
+            [.., (s, Literal::Whitespace)] if s.to == span.from => {
+                s.to = span.to;
+            }
+            _ => self.literals.push((span, Literal::Whitespace)),
+        };
+    }
+
     fn check_comma(
         &mut self,
         kind: &mut LineKind,
         last_comma: &mut u32,
         lit_start: u32,
         span: Span,
+        muddled: bool,
     ) {
+        // println!("{kind:?} {last_comma} {lit_start} {span:?}");
         match &self.literals[lit_start as usize..] {
             [(s1, Literal::Ident)] if *last_comma > 0 => {
                 if let LineKind::Instruction(s0) = kind {
@@ -278,9 +339,10 @@ impl<'a> Lexer<'a> {
                 }
                 self.literals.pop();
             }
-            [.., l1] if *last_comma > 0 => {
+            [..] if !muddled => return,
+            [.., (s, _)] if *last_comma > 0 => {
                 self.errors
-                    .push((l1.0.between(span), LineInfo::MissingComma));
+                    .push((Span::new(s.from, span.from + 1), LineError::MissingComma));
             }
             _ => (),
         }

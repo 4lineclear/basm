@@ -1,10 +1,11 @@
-use basm::lex::{LexOutput, LineInfo, LineKind, Literal, Span};
+use basm::lex::{LexOutput, LineError, LineKind, Literal, Span};
 
 // TODO: consider rewriting the below to be less insane
 
 #[cfg(test)]
 mod test;
 
+#[derive(Debug)]
 pub struct Edit {
     pub line: u32,
     pub span: Span,
@@ -42,17 +43,17 @@ pub fn fmt<'a, S: AsRef<str>>(
 
 // TODO: remove excess spaces
 
-struct LineCtx<'a> {
-    line: u32,
-    kind: LineKind,
-    comment: Option<Span>,
-    line_src: &'a str,
-    errors: &'a [(Span, LineInfo)],
-    literals: &'a [(Span, Literal)],
-    fmt: &'a FmtContext,
+pub struct LineCtx<'a> {
+    pub line: u32,
+    pub kind: LineKind,
+    pub comment: Option<Span>,
+    pub line_src: &'a str,
+    pub errors: &'a [(Span, LineError)],
+    pub literals: &'a [(Span, Literal)],
+    pub fmt: &'a FmtContext,
 }
 
-fn fmt_line(ctx: LineCtx<'_>) -> impl Iterator<Item = Edit> + '_ {
+pub fn fmt_line(ctx: LineCtx<'_>) -> impl Iterator<Item = Edit> + '_ {
     let LineCtx {
         line,
         kind,

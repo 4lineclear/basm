@@ -25,4 +25,4 @@ tracing-appender = "0.2"
 tracing-subscriber = "0.3"
 # etc
 dashmap = "6"
-ahash = "0.8"
+ahash = { workspace = true }

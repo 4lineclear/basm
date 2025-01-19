@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use basm::lex::{LexOutput, LineInfo, Literal, Span};
+use basm::lex::{LexOutput, LineError, Literal, Span};
 
 use basm_fmt::FmtContext;
 use dashmap::DashMap;
@@ -84,7 +84,7 @@ impl Document {
                 .map(move |(s, le)| (line as u32, s, le))
         })
     }
-    fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineInfo)> {
+    fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineError)> {
         self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
             al.line
                 .slice_err(&self.lex.errors)
@@ -97,16 +97,16 @@ impl Document {
         semantic_tokens::semantic_tokens(&self.lex, range)
     }
     fn diagnostics(&self) -> Vec<Diagnostic> {
-        use basm::lex::LineInfo::*;
+        use basm::lex::LineError::*;
 
-        fn diagnostic((line, span, err): (u32, &Span, &LineInfo)) -> Option<Diagnostic> {
+        fn diagnostic((line, span, err): (u32, &Span, &LineError)) -> Option<Diagnostic> {
             let message = match err {
                 MissingComma => "comma missing".to_owned(),
-                UnknownChar(ch) => format!("unexpected char: '{ch}'"),
+                // UnknownChar(ch) => format!("unexpected char: '{ch}'"),
                 UnclosedDeref => "Unclosed Deref".to_owned(),
                 EmptyDeref => "Empty Deref".to_owned(),
                 MuddyDeref => "Deref Has Other Items Within Range".to_owned(),
-                Tab => return None,
+                // Tab => return None,
             };
             Some(Diagnostic {
                 range: line_range(line, span.from, span.to),

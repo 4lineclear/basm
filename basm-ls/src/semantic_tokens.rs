@@ -199,6 +199,7 @@ pub(crate) fn semantic_tokens(
             let kind = match l {
                 Hex | Octal | Binary | Decimal | Float => TypeKind::Number,
                 Ident => TypeKind::Variable,
+                String => TypeKind::String,
                 Deref => {
                     data.push(
                         line,
@@ -220,7 +221,9 @@ pub(crate) fn semantic_tokens(
                     );
                     continue;
                 }
-                String => TypeKind::String,
+                Other | Whitespace => {
+                    continue;
+                }
             };
             data.push(line, lspan, kind, TokenMod::None);
         }
