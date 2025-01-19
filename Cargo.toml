@@ -1,3 +1,3 @@
 [workspace]
-members = ["basm-ls", "basm"]
+members = ["basm-ls", "basm", "basm-fmt"]
 resolver = "2"

@@ -241,7 +241,7 @@ fn variable_err() {
 #[test]
 fn hello_world() {
     check(
-        include_str!("./test/0-hello-world.asm"),
+        include_str!("../../../test-sample/0-hello.asm"),
         expect![[r#"
             errors:
 
@@ -282,7 +282,7 @@ fn hello_world() {
 #[test]
 fn print_any() {
     check(
-        include_str!("./test/1-print-any.asm"),
+        include_str!("../../../test-sample/3-print-any.asm"),
         expect![[r#"
             errors:
 

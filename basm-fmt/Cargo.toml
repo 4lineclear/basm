@@ -1,0 +1,11 @@
+[package]
+name = "basm-fmt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+basm = { path = "../basm/" }
+
+[dev-dependencies]
+# pretty_assertions = "1.4"
+expect-test = "1.5"

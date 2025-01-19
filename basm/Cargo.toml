@@ -13,5 +13,5 @@ edition = "2021"
 # indexmap = "2.6"
 
 [dev-dependencies]
-pretty_assertions = "1.4"
+# pretty_assertions = "1.4"
 expect-test = "1.5"

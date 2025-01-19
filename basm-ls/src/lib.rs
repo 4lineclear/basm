@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use basm::lex::{LexOutput, LineError, Literal, Span};
+use basm::lex::{LexOutput, LineInfo, Literal, Span};
 
+use basm_fmt::FmtContext;
 use dashmap::DashMap;
 use tower_lsp::{
     jsonrpc::Result,
@@ -22,10 +23,8 @@ use tower_lsp::{
     Client, LanguageServer,
 };
 
-use formatting::format_line;
 use semantic_tokens::{TOKEN_MODS, TOKEN_TYPES};
 
-mod formatting;
 mod semantic_tokens;
 
 #[derive(Debug)]
@@ -73,7 +72,7 @@ pub struct Document {
 impl Document {
     fn new(source: String) -> Self {
         let source: Arc<str> = source.into();
-        let lex = LexOutput::from(source.clone());
+        let lex = LexOutput::lex_all(source.clone());
         Self { source, lex }
     }
     #[allow(unused)]
@@ -85,7 +84,7 @@ impl Document {
                 .map(move |(s, le)| (line as u32, s, le))
         })
     }
-    fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineError)> {
+    fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineInfo)> {
         self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
             al.line
                 .slice_err(&self.lex.errors)
@@ -98,35 +97,36 @@ impl Document {
         semantic_tokens::semantic_tokens(&self.lex, range)
     }
     fn diagnostics(&self) -> Vec<Diagnostic> {
-        use basm::lex::LineError::*;
+        use basm::lex::LineInfo::*;
 
-        fn diagnostic((line, span, err): (u32, &Span, &LineError)) -> Diagnostic {
+        fn diagnostic((line, span, err): (u32, &Span, &LineInfo)) -> Option<Diagnostic> {
             let message = match err {
                 MissingComma => "comma missing".to_owned(),
                 UnknownChar(ch) => format!("unexpected char: '{ch}'"),
                 UnclosedDeref => "Unclosed Deref".to_owned(),
                 EmptyDeref => "Empty Deref".to_owned(),
                 MuddyDeref => "Deref Has Other Items Within Range".to_owned(),
+                Tab => return None,
             };
-            Diagnostic {
+            Some(Diagnostic {
                 range: line_range(line, span.from, span.to),
                 message,
                 ..Default::default()
-            }
+            })
         }
 
-        self.err_iter().map(diagnostic).collect()
+        self.err_iter().filter_map(diagnostic).collect()
     }
     // TODO: add partial formatting
     fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {
-        let _ = opts;
-        self.lex
-            .lines
-            .iter()
-            .enumerate()
-            .map(|(line, al)| format_line(line, al, &self.lex))
-            .flatten()
-            .flatten()
+        let fmt = FmtContext {
+            tab_size: opts.tab_size,
+        };
+        basm_fmt::fmt(&self.lex, &fmt)
+            .map(|e| TextEdit {
+                range: line_range(e.line, e.span.from, e.span.to),
+                new_text: e.change,
+            })
             .collect()
     }
 }

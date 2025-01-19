@@ -15,17 +15,8 @@ mod test;
 pub struct LexOutput<S> {
     pub src: S,
     pub lines: Vec<AssembledLine>,
-    pub errors: Vec<(Span, LineError)>,
+    pub errors: Vec<(Span, LineInfo)>,
     pub literals: Vec<(Span, Literal)>,
-}
-
-impl<S> From<S> for LexOutput<S>
-where
-    S: AsRef<str>,
-{
-    fn from(value: S) -> Self {
-        Self::lex_all(value)
-    }
 }
 
 impl<S> LexOutput<S>
@@ -34,15 +25,14 @@ where
 {
     pub fn lex_all(src: S) -> Self {
         let mut lexer = Lexer::new(src.as_ref());
-        let mut i = 1;
-        let lines: Vec<_> = std::iter::from_fn(|| {
-            let line = lexer.line()?;
-            let start = lexer.line_starts[i - 1];
-            let end = lexer.line_starts[i];
-            i += 1;
-            Some(AssembledLine { start, line, end })
-        })
-        .collect();
+        let lines: Vec<_> = (1..)
+            .map_while(|i| {
+                let line = lexer.line()?;
+                let start = lexer.line_starts[i - 1];
+                let end = lexer.line_starts[i];
+                Some(AssembledLine { start, line, end })
+            })
+            .collect();
         let errors = lexer.errors;
         let literals = lexer.literals;
 
@@ -55,16 +45,21 @@ where
     }
 
     pub fn line_src(&self, line: usize) -> &str {
-        let al = &self.lines[line];
-        &self.src.as_ref()[al.start as usize..al.end as usize - 1]
+        self.lines[line].line_src(self.src.as_ref())
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct AssembledLine {
-    start: u32,
-    end: u32,
+    pub start: u32,
+    pub end: u32,
     pub line: Line,
+}
+
+impl AssembledLine {
+    pub fn line_src<'a>(&self, src: &'a str) -> &'a str {
+        &src[self.start as usize..self.end as usize - 1]
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,11 +71,11 @@ pub struct Line {
 }
 
 impl Line {
-    pub fn slice_lit<'a, T>(&'a self, literals: &'a [T]) -> &'a [T] {
+    pub fn slice_lit<'a, T>(&self, literals: &'a [T]) -> &'a [T] {
         &literals[self.literals.0 as usize..self.literals.1 as usize]
     }
-    pub fn slice_err<'a, T>(&'a self, literals: &'a [T]) -> &'a [T] {
-        &literals[self.errors.0 as usize..self.errors.1 as usize]
+    pub fn slice_err<'a, T>(&self, errors: &'a [T]) -> &'a [T] {
+        &errors[self.errors.0 as usize..self.errors.1 as usize]
     }
 }
 
@@ -118,6 +113,11 @@ impl Span {
     pub fn new(from: u32, to: u32) -> Self {
         Self { from, to }
     }
+    pub fn offset(mut self, offset: u32) -> Self {
+        self.from += offset;
+        self.to += offset;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -142,7 +142,7 @@ pub enum Literal {
 }
 
 #[derive(Debug)]
-pub enum LineError {
+pub enum LineInfo {
     MissingComma,
     UnknownChar(char),
     UnclosedDeref,
@@ -150,6 +150,7 @@ pub enum LineError {
     EmptyDeref,
     /// A deref with incorrect token
     MuddyDeref,
+    Tab,
 }
 
 type Charred<'a> = Peekable<CharIndices<'a>>;
@@ -158,7 +159,7 @@ type Charred<'a> = Peekable<CharIndices<'a>>;
 pub struct Lexer<'a> {
     lines: Lines<'a>,
     line_starts: Vec<u32>,
-    errors: Vec<(Span, LineError)>,
+    errors: Vec<(Span, LineInfo)>,
     literals: Vec<(Span, Literal)>,
     chars: Charred<'a>,
 }
@@ -218,7 +219,7 @@ impl<'a> Lexer<'a> {
                         kind = LineKind::Label(s)
                     } else {
                         self.errors
-                            .push((Span::point(pos), LineError::UnknownChar(ch)))
+                            .push((Span::point(pos), LineInfo::UnknownChar(ch)))
                     }
                 }
                 '0'..='9' => {
@@ -229,7 +230,7 @@ impl<'a> Lexer<'a> {
                 '[' => {
                     if let Some((_, deref)) = deref {
                         self.errors
-                            .push((Span::point(deref), LineError::UnknownChar(ch)));
+                            .push((Span::point(deref), LineInfo::UnknownChar(ch)));
                     }
                     deref = Some((self.literals.len(), pos));
                 }
@@ -238,8 +239,8 @@ impl<'a> Lexer<'a> {
                     let span = Span::new(deref_open, pos + 1);
                     match &mut self.literals[orig..] {
                         [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
-                        [.., _] => self.errors.push((span, LineError::MuddyDeref)),
-                        [] => self.errors.push((span, LineError::EmptyDeref)),
+                        [.., _] => self.errors.push((span, LineInfo::MuddyDeref)),
+                        [] => self.errors.push((span, LineInfo::EmptyDeref)),
                     }
                     deref = None;
                 }
@@ -249,11 +250,11 @@ impl<'a> Lexer<'a> {
                 }
                 _ => self
                     .errors
-                    .push((Span::point(pos), LineError::UnknownChar(ch))),
+                    .push((Span::point(pos), LineInfo::UnknownChar(ch))),
             }
         }
         if let Some((_, p)) = deref {
-            self.errors.push((Span::point(p), LineError::UnclosedDeref));
+            self.errors.push((Span::point(p), LineInfo::UnclosedDeref));
         }
         Line {
             kind,
@@ -279,7 +280,7 @@ impl<'a> Lexer<'a> {
             }
             [.., l1] if *last_comma > 0 => {
                 self.errors
-                    .push((l1.0.between(span), LineError::MissingComma));
+                    .push((l1.0.between(span), LineInfo::MissingComma));
             }
             _ => (),
         }

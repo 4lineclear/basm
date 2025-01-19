@@ -5,7 +5,7 @@ use tower_lsp::{LspService, Server};
 
 #[tokio::main]
 async fn main() {
-    if args().find(|s| matches!(s.as_str(), "--version")).is_some() {
+    if args().any(|s| matches!(s.as_str(), "--version")) {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return;
     }

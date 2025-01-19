@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 basm = { path = "../basm/" }
+basm-fmt = { path = "../basm-fmt/" }
 # # server
 # tower-lsp = "0.20"
 # tokio = { version = "1.43", features = ["full"] }
