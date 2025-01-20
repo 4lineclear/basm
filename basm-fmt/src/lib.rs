@@ -141,7 +141,7 @@ fn fmt_literals(
             _ => None,
         },
         OpenBracket | CloseBracket => None,
-        String | Binary | Octal | Decimal | Hex => None,
+        String | Digit(_) => None,
         Comma => line_src[span.to as usize..]
             .chars()
             .next()

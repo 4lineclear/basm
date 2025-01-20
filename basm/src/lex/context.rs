@@ -1,4 +1,4 @@
-use super::{Line, LineKind, Literal, Span};
+use super::{LexLine, LineKind, Literal, Span};
 
 #[derive(Debug, Default)]
 pub struct Context<'a> {
@@ -13,8 +13,8 @@ pub struct Context<'a> {
 }
 
 impl Context<'_> {
-    pub fn line(&mut self) -> Line {
-        let line = Line {
+    pub fn line(&mut self) -> LexLine {
+        let line = LexLine {
             kind: self.kind,
             literals: (self.lit_start, self.literals.len() as u32),
             comment: None,

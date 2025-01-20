@@ -1,10 +1,3 @@
-use std::{
-    iter::Peekable,
-    str::{CharIndices, Lines},
-};
-
-use self::context::Context;
-
 #[cfg(test)]
 mod test;
 
@@ -31,12 +24,12 @@ where
         let lines: Vec<_> = (1..)
             .map_while(|i| {
                 let line = lexer.line()?;
-                let start = lexer.line_starts[i - 1];
-                let end = lexer.line_starts[i];
+                let start = lexer.line_starts()[i - 1];
+                let end = lexer.line_starts()[i];
                 Some(AssembledLine { start, line, end })
             })
             .collect();
-        let literals = lexer.context.parts();
+        let literals = lexer.parts();
 
         Self {
             src,
@@ -57,7 +50,7 @@ where
 pub struct AssembledLine {
     pub start: u32,
     pub end: u32,
-    pub line: Line,
+    pub line: LexLine,
 }
 
 impl AssembledLine {
@@ -67,13 +60,13 @@ impl AssembledLine {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Line {
+pub struct LexLine {
     pub kind: LineKind,
     pub literals: (u32, u32),
     pub comment: Option<Span>,
 }
 
-impl Line {
+impl LexLine {
     pub fn slice_lit<'a, T>(&self, literals: &'a [T]) -> &'a [T] {
         &literals[self.literals.0 as usize..self.literals.1 as usize]
     }
@@ -142,10 +135,7 @@ pub enum LineKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Literal {
     Whitespace,
-    Binary,
-    Octal,
-    Decimal,
-    Hex,
+    Digit(DigitBase),
     Ident,
     String,
     Comma,
@@ -155,117 +145,239 @@ pub enum Literal {
     Other,
 }
 
-type Charred<'a> = Peekable<CharIndices<'a>>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DigitBase {
+    Binary,
+    Octal,
+    Decimal,
+    Hex,
+}
 
-#[derive(Debug)]
-pub struct Lexer<'a> {
-    lines: Lines<'a>,
-    line_starts: Vec<u32>,
-    context: Context<'a>,
-    chars: Charred<'a>,
+pub use private::Lexer;
+
+mod private {
+    use std::str::{Chars, Lines};
+    use std::u32;
+
+    use super::context::{Context, Spanned};
+    use super::{LexLine, Literal};
+
+    #[derive(Debug)]
+    pub struct Lexer<'a> {
+        lines: Lines<'a>,
+        line_starts: Vec<u32>,
+        context: Context<'a>,
+        chars: Chars<'a>,
+        pos: u32,
+    }
+
+    const EOF_CHAR: char = '\0';
+
+    impl<'a> Lexer<'a> {
+        pub(crate) fn new(src: &'a str) -> Self {
+            Self {
+                lines: src.lines(),
+                line_starts: vec![0],
+                context: Context::default(),
+                chars: "".chars(),
+                pos: 0,
+            }
+        }
+        pub(crate) fn parts(self) -> Vec<(super::Span, Literal)> {
+            self.context.parts()
+        }
+        pub(crate) fn line_starts(&self) -> &[u32] {
+            &self.line_starts
+        }
+        pub(crate) fn get_line(&mut self) -> Option<&'a str> {
+            self.lines.next()
+        }
+        pub(crate) fn reset(&mut self, line: &'a str) {
+            self.pos = 0;
+            self.chars = line.chars();
+            self.context.reset(line);
+            self.line_starts
+                .push(self.line_starts.last().copied().unwrap_or(0) + line.len() as u32 + 1);
+        }
+        pub(crate) fn first(&mut self) -> char {
+            self.chars.clone().next().unwrap_or(EOF_CHAR)
+        }
+        #[allow(unused)]
+        pub(crate) fn second(&self) -> char {
+            let mut iter = self.chars.clone();
+            iter.next();
+            iter.next().unwrap_or(EOF_CHAR)
+        }
+        pub(crate) fn bump(&mut self) -> Option<char> {
+            self.pos += 1;
+            self.chars.next()
+        }
+        pub(crate) fn push_lit(&mut self, span: impl Spanned, lit: Literal) {
+            self.context.push_lit(span, lit);
+        }
+        pub(crate) fn line_info(&mut self) -> LexLine {
+            self.context.line()
+        }
+        pub(crate) fn is_eof(&self) -> bool {
+            self.chars.as_str().is_empty()
+        }
+        pub(crate) fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+            while predicate(self.first()) && !self.is_eof() {
+                self.bump();
+            }
+        }
+        pub(crate) fn pos(&mut self) -> u32 {
+            self.pos
+        }
+    }
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(src: &'a str) -> Self {
-        Self {
-            lines: src.lines(),
-            line_starts: vec![0],
-            context: Context::default(),
-            chars: "".char_indices().peekable(),
-        }
-    }
-    pub fn line(&mut self) -> Option<Line> {
-        let line = self.lines.next()?;
-        Some(self.line_inner(line))
-    }
-    fn line_inner(&mut self, line: &'a str) -> Line {
-        self.chars = line.char_indices().peekable();
-        self.context.reset(line);
-        self.line_starts
-            .push(self.line_starts.last().copied().unwrap_or(0) + line.len() as u32 + 1);
+    pub fn line(&mut self) -> Option<LexLine> {
+        let line = self.get_line()?;
+        self.reset(line);
         let comment = loop {
-            let Some((pos, ch)) = self.chars.next() else {
-                break None;
-            };
-            let pos = pos as u32;
-            match ch {
-                _ if ch.is_whitespace() => self.context.push_lit(pos, Literal::Whitespace),
-                'a'..='z' | 'A'..='Z' | '_' => {
-                    let end = self.ident(pos);
-                    self.context.push_lit((pos, end), Literal::Ident);
-                }
-                '"' => {
-                    let end = self.string(pos);
-                    self.context.push_lit((pos, end), Literal::String);
-                }
-                '0'..='9' => {
-                    let (span, lit) = self.digit(pos, ch);
-                    self.context.push_lit(span, lit);
-                }
-                '[' => self.context.push_lit(pos, Literal::OpenBracket),
-                ']' => self.context.push_lit(pos, Literal::CloseBracket),
-                ':' => self.context.push_lit(pos, Literal::Colon),
-                ',' => self.context.push_lit(pos, Literal::Comma),
-                ';' => break Some(Span::new(pos, line.len() as u32)),
-                _ => self.context.push_lit(pos, Literal::Other),
+            match self.advance(line) {
+                Some(None) => (),
+                Some(Some(comment)) => break Some(comment),
+                None => break None,
             }
         };
-        Line {
+        Some(LexLine {
             comment,
-            ..self.context.line()
+            ..self.line_info()
+        })
+    }
+    fn advance(&mut self, line: &'a str) -> Option<Option<Span>> {
+        let pos = self.pos();
+        let Some(ch) = self.bump() else {
+            return None;
+        };
+        match ch {
+            _ if ch.is_whitespace() => self.push_lit(pos, Literal::Whitespace),
+            _ if is_id_start(ch) => {
+                self.ident();
+                let span = (pos, self.pos());
+                self.push_lit(span, Literal::Ident);
+            }
+            '"' => {
+                self.string();
+                let span = (pos, self.pos());
+                self.push_lit(span, Literal::String);
+            }
+            '0'..='9' => {
+                let base = self.number(ch);
+                let span = (pos, self.pos());
+                self.push_lit(span, Literal::Digit(base));
+            }
+            '[' => self.push_lit(pos, Literal::OpenBracket),
+            ']' => self.push_lit(pos, Literal::CloseBracket),
+            ':' => self.push_lit(pos, Literal::Colon),
+            ',' => self.push_lit(pos, Literal::Comma),
+            ';' => return Some(Some(Span::new(pos, line.len() as u32))),
+            _ => self.push_lit(pos, Literal::Other),
+        }
+        Some(None)
+    }
+
+    fn ident(&mut self) {
+        self.eat_while(is_id_continue);
+    }
+    fn string(&mut self) {
+        while let Some(c) = self.bump() {
+            match c {
+                '"' => return,
+                '\\' if self.first() == '\\' || self.first() == '"' => {
+                    // Bump again to skip escaped character.
+                    self.bump();
+                }
+                _ => (),
+            }
         }
     }
 
-    fn until(&mut self, start: u32, check: impl Fn(char) -> bool) -> u32 {
-        let mut last = start;
-        while let Some((i, ch)) = self.chars.peek().copied() {
-            if !check(ch) {
-                break;
+    // TODO: eventually add floats back in
+    fn number(&mut self, first_digit: char) -> DigitBase {
+        // dassert!('0' <= self.prev() && self.prev() <= '9');
+        let mut base = DigitBase::Decimal;
+        if first_digit == '0' {
+            // Attempt to parse encoding base.
+            match self.first() {
+                'b' => {
+                    base = DigitBase::Binary;
+                    self.bump();
+                    if !self.eat_decimal_digits() {
+                        return DigitBase::Decimal;
+                    }
+                }
+                'o' => {
+                    base = DigitBase::Octal;
+                    self.bump();
+                    if !self.eat_decimal_digits() {
+                        return DigitBase::Decimal;
+                    }
+                }
+                'x' => {
+                    base = DigitBase::Hex;
+                    self.bump();
+                    if !self.eat_hexadecimal_digits() {
+                        return DigitBase::Decimal;
+                    }
+                }
+                // Not a base prefix; consume additional digits.
+                '0'..='9' | '_' => {
+                    self.eat_decimal_digits();
+                }
+                // Just a 0.
+                _ => return DigitBase::Decimal,
             }
-            last = i as u32;
-            self.chars.next();
-        }
-        last + 1
-    }
-    fn ident(&mut self, start: u32) -> u32 {
-        self.until(
-            start,
-            |ch| matches!(ch, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'),
-        )
-    }
-    fn digit(&mut self, pos: u32, ch: char) -> (Span, Literal) {
-        let (end, lit) = match self
-            .chars
-            .next_if(|(_, a)| ch == '0' && matches!(*a, 'b' | 'o' | 'x'))
-        {
-            Some((_, 'b')) => (self.binary(pos), Literal::Binary),
-            Some((_, 'o')) => (self.octal(pos), Literal::Octal),
-            Some((_, 'x')) => (self.hex(pos), Literal::Hex),
-            _ => (self.decimal(pos), Literal::Decimal),
+        } else {
+            // No base prefix, parse number in the usual way.
+            self.eat_decimal_digits();
         };
-        (Span::new(pos, end), lit)
+        base
     }
-    fn hex(&mut self, start: u32) -> u32 {
-        self.ident(start)
-    }
-    fn decimal(&mut self, start: u32) -> u32 {
-        self.until(start, |ch| matches!(ch, '0'..='9' | '_' | '.'))
-    }
-    fn octal(&mut self, start: u32) -> u32 {
-        self.until(start, |ch| matches!(ch, '0'..='7' | '_'))
-    }
-    fn binary(&mut self, start: u32) -> u32 {
-        self.until(start, |ch| matches!(ch, '0' | '1' | '_'))
-    }
-    // TODO: create better string parsing
-    fn string(&mut self, start: u32) -> u32 {
-        let mut last = start;
+
+    fn eat_decimal_digits(&mut self) -> bool {
+        let mut has_digits = false;
         loop {
-            match self.chars.next() {
-                Some((_, '"')) => break last + 2,
-                Some((i, _)) => last = i as u32,
-                None => break last + 1,
+            match self.first() {
+                '_' => {
+                    self.bump();
+                }
+                '0'..='9' => {
+                    has_digits = true;
+                    self.bump();
+                }
+                _ => break,
             }
         }
+        has_digits
     }
+
+    fn eat_hexadecimal_digits(&mut self) -> bool {
+        let mut has_digits = false;
+        loop {
+            match self.first() {
+                '_' => {
+                    self.bump();
+                }
+                '0'..='9' | 'a'..='f' | 'A'..='F' => {
+                    has_digits = true;
+                    self.bump();
+                }
+                _ => break,
+            }
+        }
+        has_digits
+    }
+}
+
+fn is_id_start(first: char) -> bool {
+    matches!(first,
+    'a'..='z' | 'A'..='Z' | '_'
+        )
+}
+fn is_id_continue(ch: char) -> bool {
+    matches!(ch,'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
 }

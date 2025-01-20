@@ -175,7 +175,7 @@ pub(crate) fn semantic_tokens(
             use basm::lex::Literal::*;
             idents += (Ident == l) as u32;
             let (kind, modi) = match l {
-                Hex | Octal | Binary | Decimal => (TypeKind::Number, TokenMod::Static as u32),
+                Digit(_) => (TypeKind::Number, TokenMod::Static as u32),
                 Ident => match (al.line.kind, idents) {
                     (Label, 1) => (TypeKind::Function, TokenMod::Declaration as u32),
                     (Section | Global, 1) => (

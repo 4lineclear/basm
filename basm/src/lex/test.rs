@@ -1,8 +1,8 @@
 use expect_test::{expect, Expect};
 
-use super::{LexOutput, Line};
+use super::{LexLine, LexOutput};
 
-fn print_line<S: AsRef<str>>(l: &Line, lexer: &LexOutput<S>) -> String {
+fn print_line<S: AsRef<str>>(l: &LexLine, lexer: &LexOutput<S>) -> String {
     format!(
         "{:?}\n{}{:?}",
         l.kind,
@@ -256,16 +256,16 @@ fn decimal() {
 1, 1293, 9384093, 1231234",
         expect![[r#"
             Empty
-            	(0, 1) Decimal
+            	(0, 1) Digit(Decimal)
             	(1, 2) Comma
             	(2, 3) Whitespace
-            	(3, 7) Decimal
+            	(3, 7) Digit(Decimal)
             	(7, 8) Comma
             	(8, 9) Whitespace
-            	(9, 16) Decimal
+            	(9, 16) Digit(Decimal)
             	(16, 17) Comma
             	(17, 18) Whitespace
-            	(18, 25) Decimal
+            	(18, 25) Digit(Decimal)
             None"#]],
     );
 }
@@ -284,17 +284,17 @@ digit reb 100",
             	(7, 22) String
             	(22, 23) Comma
             	(23, 24) Whitespace
-            	(24, 29) Decimal
+            	(24, 29) Digit(Decimal)
             	(29, 30) Comma
             	(30, 31) Whitespace
-            	(31, 33) Decimal
+            	(31, 33) Digit(Decimal)
             None
             Variable
             	(0, 5) Ident
             	(5, 6) Whitespace
             	(6, 9) Ident
             	(9, 10) Whitespace
-            	(10, 13) Decimal
+            	(10, 13) Digit(Decimal)
             None"#]],
     );
 }
@@ -310,9 +310,9 @@ fn variable_err() {
             	(6, 7) Whitespace
             	(7, 22) String
             	(22, 23) Whitespace
-            	(23, 28) Decimal
+            	(23, 28) Digit(Decimal)
             	(28, 29) Whitespace
-            	(29, 31) Decimal
+            	(29, 31) Digit(Decimal)
             None"#]],
     );
 }
@@ -335,7 +335,7 @@ fn hello_world() {
             	(15, 29) String
             	(29, 30) Comma
             	(30, 31) Whitespace
-            	(31, 33) Decimal
+            	(31, 33) Digit(Decimal)
             	(33, 35) Whitespace
             Some((35, 64))
             Empty
@@ -365,7 +365,7 @@ fn hello_world() {
             	(14, 17) Ident
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 20) Decimal
+            	(19, 20) Digit(Decimal)
             	(20, 32) Whitespace
             Some((32, 55))
             Instruction
@@ -375,7 +375,7 @@ fn hello_world() {
             	(14, 17) Ident
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 20) Decimal
+            	(19, 20) Digit(Decimal)
             	(20, 32) Whitespace
             Some((32, 57))
             Instruction
@@ -395,7 +395,7 @@ fn hello_world() {
             	(14, 17) Ident
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 21) Decimal
+            	(19, 21) Digit(Decimal)
             	(21, 32) Whitespace
             Some((32, 49))
             Instruction
@@ -410,7 +410,7 @@ fn hello_world() {
             	(14, 17) Ident
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 21) Decimal
+            	(19, 21) Digit(Decimal)
             	(21, 32) Whitespace
             Some((32, 54))
             Instruction
@@ -449,10 +449,10 @@ fn print_any() {
             	(19, 34) String
             	(34, 35) Comma
             	(35, 36) Whitespace
-            	(36, 38) Decimal
+            	(36, 38) Digit(Decimal)
             	(38, 39) Comma
             	(39, 40) Whitespace
-            	(40, 41) Decimal
+            	(40, 41) Digit(Decimal)
             None
             Variable
             	(0, 4) Whitespace
@@ -463,10 +463,10 @@ fn print_any() {
             	(16, 27) String
             	(27, 28) Comma
             	(28, 29) Whitespace
-            	(29, 31) Decimal
+            	(29, 31) Digit(Decimal)
             	(31, 32) Comma
             	(32, 33) Whitespace
-            	(33, 34) Decimal
+            	(33, 34) Digit(Decimal)
             None
             Variable
             	(0, 4) Whitespace
@@ -477,10 +477,10 @@ fn print_any() {
             	(17, 49) String
             	(49, 50) Comma
             	(50, 51) Whitespace
-            	(51, 53) Decimal
+            	(51, 53) Digit(Decimal)
             	(53, 54) Comma
             	(54, 55) Whitespace
-            	(55, 56) Decimal
+            	(55, 56) Digit(Decimal)
             None
             Empty
             None
@@ -559,7 +559,7 @@ fn print_any() {
             	(8, 11) Ident
             	(11, 12) Comma
             	(12, 13) Whitespace
-            	(13, 15) Decimal
+            	(13, 15) Digit(Decimal)
             None
             Instruction
             	(0, 4) Whitespace
@@ -568,7 +568,7 @@ fn print_any() {
             	(8, 11) Ident
             	(11, 12) Comma
             	(12, 13) Whitespace
-            	(13, 14) Decimal
+            	(13, 14) Digit(Decimal)
             None
             Instruction
             	(0, 4) Whitespace
@@ -591,7 +591,7 @@ fn print_any() {
             	(8, 11) Ident
             	(11, 12) Comma
             	(12, 13) Whitespace
-            	(13, 14) Decimal
+            	(13, 14) Digit(Decimal)
             None
             Label
             	(0, 10) Ident
@@ -627,7 +627,7 @@ fn print_any() {
             	(8, 10) Ident
             	(10, 11) Comma
             	(11, 12) Whitespace
-            	(12, 13) Decimal
+            	(12, 13) Digit(Decimal)
             None
             Instruction
             	(0, 4) Whitespace
@@ -644,7 +644,7 @@ fn print_any() {
             	(8, 11) Ident
             	(11, 12) Comma
             	(12, 13) Whitespace
-            	(13, 14) Decimal
+            	(13, 14) Digit(Decimal)
             None
             Instruction
             	(0, 4) Whitespace
@@ -653,7 +653,7 @@ fn print_any() {
             	(8, 11) Ident
             	(11, 12) Comma
             	(12, 13) Whitespace
-            	(13, 14) Decimal
+            	(13, 14) Digit(Decimal)
             None
             Instruction
             	(0, 4) Whitespace
@@ -692,25 +692,26 @@ fn numerics() {
 ",
         expect![[r#"
             Empty
-            	(0, 6) Decimal
+            	(0, 6) Digit(Decimal)
             	(6, 7) Comma
             	(7, 8) Whitespace
-            	(8, 16) Decimal
+            	(8, 16) Digit(Decimal)
             	(16, 17) Comma
             	(17, 18) Whitespace
-            	(18, 28) Decimal
+            	(18, 28) Digit(Decimal)
             	(28, 29) Comma
             	(29, 30) Whitespace
-            	(30, 55) Decimal
+            	(30, 55) Digit(Decimal)
             None
-            Empty
-            	(0, 20) Hex
+            Instruction
+            	(0, 3) Digit(Hex)
+            	(3, 20) Ident
             	(20, 21) Comma
             	(21, 22) Whitespace
-            	(22, 34) Binary
+            	(22, 34) Digit(Binary)
             	(34, 35) Comma
             	(35, 36) Whitespace
-            	(36, 47) Octal
+            	(36, 47) Digit(Octal)
             None"#]],
     );
 }
@@ -738,7 +739,7 @@ three [  12309 nooooo]
             	(5, 6) Whitespace
             	(6, 12) Ident
             	(12, 13) Whitespace
-            	(13, 18) Decimal
+            	(13, 18) Digit(Decimal)
             	(18, 19) CloseBracket
             None
             Instruction
@@ -746,7 +747,7 @@ three [  12309 nooooo]
             	(5, 6) Whitespace
             	(6, 7) OpenBracket
             	(7, 9) Whitespace
-            	(9, 14) Decimal
+            	(9, 14) Digit(Decimal)
             	(14, 15) Whitespace
             	(15, 21) Ident
             	(21, 22) CloseBracket
@@ -762,7 +763,13 @@ fn float() {
 ",
         expect![[r#"
             Empty
-            	(0, 13) Decimal
+            	(0, 1) Digit(Decimal)
+            	(1, 2) Other
+            	(2, 5) Digit(Decimal)
+            	(5, 6) Other
+            	(6, 9) Digit(Decimal)
+            	(9, 10) Other
+            	(10, 13) Digit(Decimal)
             None"#]],
     );
 }
@@ -777,12 +784,12 @@ fn ooo() {
 ",
         expect![[r#"
             Instruction
-            	(0, 3) Decimal
+            	(0, 3) Digit(Decimal)
             	(3, 5) Whitespace
             	(5, 9) Ident
             None
             Empty
-            	(0, 3) Decimal
+            	(0, 3) Digit(Decimal)
             	(3, 4) Comma
             	(4, 5) Whitespace
             	(5, 9) Ident
@@ -845,10 +852,10 @@ section section: : :
             	(8, 13) String
             	(13, 14) Comma
             	(14, 15) Whitespace
-            	(15, 17) Decimal
+            	(15, 17) Digit(Decimal)
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 20) Decimal
+            	(19, 20) Digit(Decimal)
             	(20, 21) Colon
             	(21, 22) Whitespace
             	(22, 23) Colon
@@ -916,10 +923,10 @@ section section`~]]./\\
             	(8, 13) String
             	(13, 14) Comma
             	(14, 15) Whitespace
-            	(15, 17) Decimal
+            	(15, 17) Digit(Decimal)
             	(17, 18) Comma
             	(18, 19) Whitespace
-            	(19, 20) Decimal
+            	(19, 20) Digit(Decimal)
             	(20, 22) Other
             	(22, 23) CloseBracket
             	(23, 24) CloseBracket

@@ -2,6 +2,9 @@
 name = "basm"
 version = "0.0.1"
 edition = "2021"
+
+[dependencies]
+ahash = { workspace = true }
 # unicode
 # unicode-ident = "1.0"
 # unicode-normalization = "0.1"
