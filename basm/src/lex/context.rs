@@ -1,30 +1,30 @@
-use super::{Line, LineError, LineKind, Literal, Span};
+use super::{Line, LineKind, Literal, Span};
 
 #[derive(Debug, Default)]
 pub struct Context<'a> {
     pub line_src: &'a str,
-    errors: Vec<(Span, LineError)>,
     literals: Vec<(Span, Literal)>,
     kind: LineKind,
     lit_start: u32,
-    err_start: u32,
-    muddled: bool,
+    comma_found: bool,
+    bracket: bool,
     last_comma: u32,
     valid_literals: u32,
 }
+
+// TODO: consider removing global & section
 
 impl Context<'_> {
     pub fn line(&mut self) -> Line {
         let line = Line {
             kind: self.kind,
-            errors: (self.err_start, self.errors.len() as u32),
             literals: (self.lit_start, self.literals.len() as u32),
             comment: None,
         };
         self.kind = LineKind::Empty;
         self.lit_start = self.literals.len() as u32;
-        self.err_start = self.errors.len() as u32;
-        self.muddled = false;
+        self.comma_found = false;
+        self.bracket = false;
         self.last_comma = 0;
         self.valid_literals = 0;
         line
@@ -33,8 +33,7 @@ impl Context<'_> {
         use LineKind::*;
         use Literal::*;
         let span = span.spanned();
-        // TODO: consider removing global & section
-        if let (Ident, Empty, false) = (lit, self.kind, self.muddled) {
+        if let (Ident, Empty, false) = (lit, self.kind, self.comma_found) {
             self.kind = match span.slice(self.line_src) {
                 "section" => Section,
                 "global" => Global,
@@ -49,25 +48,27 @@ impl Context<'_> {
             return;
         }
         if Comma == lit {
+            self.comma_found = true;
             self.last_comma = 0;
             if let (1, Instruction) = (self.valid_literals, self.kind) {
                 self.kind = Empty;
             }
+        } else if OpenBracket == lit {
+            self.bracket = true;
+        } else if CloseBracket == lit {
+            self.bracket = false;
         } else {
-            if self.valid_literals > 2 {
-                if self.last_comma > 0 {
-                    let span = self.literals.last().map(|(s, _)| *s).unwrap_or(span);
-                    self.errors.push((span, LineError::MissingComma));
-                }
-                if Instruction == self.kind {
-                    self.kind = Variable;
-                }
+            if self.valid_literals > 1
+                && self.last_comma > 1
+                && !self.bracket
+                && Instruction == self.kind
+            {
+                self.kind = Variable;
             }
             self.last_comma += 1;
             self.valid_literals += 1;
         }
         self.literals.push((span, lit));
-        self.muddled |= lit == Comma;
     }
     fn combined(&mut self, span: Span, lit: Literal) {
         if let Some((orig, orig_lit)) = self.literals.last_mut() {
@@ -89,8 +90,8 @@ impl Context<'_> {
     //     self.literals.len() as u32 - self.lit_start
     // }
 
-    pub fn parts(self) -> (Vec<(Span, Literal)>, Vec<(Span, LineError)>) {
-        (self.literals, self.errors)
+    pub fn parts(self) -> Vec<(Span, Literal)> {
+        self.literals
     }
 }
 
@@ -105,7 +106,6 @@ impl<'a> Context<'a> {
         self.line_src = line;
         self.kind = LineKind::Empty;
         self.lit_start = self.literals.len() as u32;
-        self.err_start = self.errors.len() as u32;
     }
 }
 

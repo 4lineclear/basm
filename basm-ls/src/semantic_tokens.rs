@@ -189,28 +189,7 @@ pub(crate) fn semantic_tokens(
                     _ => (TypeKind::Variable, TokenMod::None as u32),
                 },
                 String => (TypeKind::String, TokenMod::None as u32),
-                Deref => {
-                    data.push(
-                        line,
-                        Span::point(lspan.from),
-                        TypeKind::Operator,
-                        TokenMod::None,
-                    );
-                    data.push(
-                        line,
-                        Span::new(lspan.from + 1, lspan.to - 1),
-                        TypeKind::Variable,
-                        TokenMod::None,
-                    );
-                    data.push(
-                        line,
-                        Span::point(lspan.to - 1),
-                        TypeKind::Operator,
-                        TokenMod::None,
-                    );
-                    continue;
-                }
-                Colon => (TypeKind::Operator, TokenMod::None as u32),
+                OpenBracket | CloseBracket | Colon => (TypeKind::Operator, TokenMod::None as u32),
                 Other | Whitespace | Comma => {
                     continue;
                 }

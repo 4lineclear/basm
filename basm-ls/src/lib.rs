@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use basm::lex::{LexOutput, LineError, Literal, Span};
+use basm::lex::{LexOutput, Literal, Span};
 
 use basm_fmt::FmtContext;
 use dashmap::DashMap;
@@ -84,38 +84,39 @@ impl Document {
                 .map(move |(s, le)| (line as u32, s, le))
         })
     }
-    fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineError)> {
-        self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
-            al.line
-                .slice_err(&self.lex.errors)
-                .iter()
-                .map(move |(s, le)| (line as u32, s, le))
-        })
-    }
+    // fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineError)> {
+    //     self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
+    //         al.line
+    //             .slice_err(&self.lex.errors)
+    //             .iter()
+    //             .map(move |(s, le)| (line as u32, s, le))
+    //     })
+    // }
     // TODO: add partial & delta semantic token changes
     fn semantic_tokens(&self, range: Option<Range>) -> Vec<SemanticToken> {
         semantic_tokens::semantic_tokens(&self.lex, range)
     }
     fn diagnostics(&self) -> Vec<Diagnostic> {
-        use basm::lex::LineError::*;
+        // use basm::lex::LineError::*;
 
-        fn diagnostic((line, span, err): (u32, &Span, &LineError)) -> Option<Diagnostic> {
-            let message = match err {
-                MissingComma => "comma missing".to_owned(),
-                // UnknownChar(ch) => format!("unexpected char: '{ch}'"),
-                UnclosedDeref => "Unclosed Deref".to_owned(),
-                EmptyDeref => "Empty Deref".to_owned(),
-                MuddyDeref => "Deref Has Other Items Within Range".to_owned(),
-                // Tab => return None,
-            };
-            Some(Diagnostic {
-                range: line_range(line, span.from, span.to),
-                message,
-                ..Default::default()
-            })
-        }
-
-        self.err_iter().filter_map(diagnostic).collect()
+        // fn diagnostic((line, span, err): (u32, &Span, &LineError)) -> Option<Diagnostic> {
+        //     let message = match err {
+        //         MissingComma => "comma missing".to_owned(),
+        //         // UnknownChar(ch) => format!("unexpected char: '{ch}'"),
+        //         UnclosedDeref => "Unclosed Deref".to_owned(),
+        //         EmptyDeref => "Empty Deref".to_owned(),
+        //         MuddyDeref => "Deref Has Other Items Within Range".to_owned(),
+        //         // Tab => return None,
+        //     };
+        //     Some(Diagnostic {
+        //         range: line_range(line, span.from, span.to),
+        //         message,
+        //         ..Default::default()
+        //     })
+        // }
+        //
+        // self.err_iter().filter_map(diagnostic).collect()
+        Vec::new()
     }
     // TODO: add partial formatting
     fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {

@@ -1,5 +1,5 @@
 [workspace]
-members = ["basm-ls", "basm", "basm-fmt"]
+members = ["basm-ls", "basm", "basm-fmt", "basm-vm"]
 resolver = "2"
 
 [workspace.dependencies]

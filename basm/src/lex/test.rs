@@ -6,15 +6,11 @@ use super::{LexOutput, Line};
 // into the actual order they appear in.
 fn print_line<S: AsRef<str>>(l: &Line, lexer: &LexOutput<S>) -> String {
     format!(
-        "{:?}\n{}{}{:?}",
+        "{:?}\n{}{:?}",
         l.kind,
         l.slice_lit(&lexer.literals)
             .iter()
             .map(|(s, l)| format!("\t{s:?} {l:?}\n"))
-            .collect::<String>(),
-        l.slice_err(&lexer.errors)
-            .iter()
-            .map(|(s, e)| format!("\t\t{s:?} {e:?}\n"))
             .collect::<String>(),
         l.comment
     )
@@ -279,7 +275,8 @@ fn decimal() {
 fn variable() {
     check(
         "\
-msg db \"ONE TWO THREE\", 12309, 12",
+msg db \"ONE TWO THREE\", 12309, 12
+digit reb 100",
         expect![[r#"
             Variable
             	(0, 3) Ident
@@ -293,6 +290,13 @@ msg db \"ONE TWO THREE\", 12309, 12",
             	(29, 30) Comma
             	(30, 31) Whitespace
             	(31, 33) Decimal
+            None
+            Variable
+            	(0, 5) Ident
+            	(5, 6) Whitespace
+            	(6, 9) Ident
+            	(9, 10) Whitespace
+            	(10, 13) Decimal
             None"#]],
     );
 }
@@ -311,8 +315,6 @@ fn variable_err() {
             	(23, 28) Decimal
             	(28, 29) Whitespace
             	(29, 31) Decimal
-            		(22, 23) MissingComma
-            		(28, 29) MissingComma
             None"#]],
     );
 }
@@ -346,7 +348,7 @@ fn hello_world() {
             	(7, 10) Whitespace
             	(10, 14) Ident
             None
-            Instruction
+            Global
             	(0, 4) Whitespace
             	(4, 10) Ident
             	(10, 14) Whitespace
@@ -490,7 +492,7 @@ fn print_any() {
             	(7, 8) Whitespace
             	(8, 12) Ident
             None
-            Instruction
+            Global
             	(0, 4) Whitespace
             	(4, 10) Ident
             	(10, 11) Whitespace
@@ -617,9 +619,9 @@ fn print_any() {
             	(8, 10) Ident
             	(10, 11) Comma
             	(11, 12) Whitespace
-            	(12, 13) Other
+            	(12, 13) OpenBracket
             	(13, 16) Ident
-            	(16, 17) Other
+            	(16, 17) CloseBracket
             None
             Instruction
             	(0, 4) Whitespace
@@ -717,7 +719,7 @@ fn numerics() {
 }
 
 #[test]
-fn deref_err() {
+fn deref() {
     check(
         "\
 one [ yeahhhhh
@@ -728,29 +730,29 @@ three [  12309 nooooo]
             Instruction
             	(0, 3) Ident
             	(3, 4) Whitespace
-            	(4, 5) Other
+            	(4, 5) OpenBracket
             	(5, 6) Whitespace
             	(6, 14) Ident
             None
             Instruction
             	(0, 3) Ident
             	(3, 4) Whitespace
-            	(4, 5) Other
+            	(4, 5) OpenBracket
             	(5, 6) Whitespace
             	(6, 12) Ident
             	(12, 13) Whitespace
             	(13, 18) Decimal
-            	(18, 19) Other
+            	(18, 19) CloseBracket
             None
             Instruction
             	(0, 5) Ident
             	(5, 6) Whitespace
-            	(6, 7) Other
+            	(6, 7) OpenBracket
             	(7, 9) Whitespace
             	(9, 14) Decimal
             	(14, 15) Whitespace
             	(15, 21) Ident
-            	(21, 22) Other
+            	(21, 22) CloseBracket
             None"#]],
     );
 }
@@ -825,9 +827,8 @@ section section: : :
             	(7, 8) Colon
             	(8, 9) Whitespace
             	(9, 10) Colon
-            		(8, 9) MissingComma
             None
-            Label
+            Variable
             	(0, 3) Ident
             	(3, 4) Whitespace
             	(4, 7) Ident
@@ -838,9 +839,6 @@ section section: : :
             	(13, 14) Colon
             	(14, 15) Whitespace
             	(15, 16) Colon
-            		(8, 11) MissingComma
-            		(12, 13) MissingComma
-            		(14, 15) MissingComma
             None
             Variable
             	(0, 3) Ident
@@ -859,9 +857,6 @@ section section: : :
             	(22, 23) Colon
             	(23, 24) Whitespace
             	(24, 25) Colon
-            		(19, 20) MissingComma
-            		(21, 22) MissingComma
-            		(23, 24) MissingComma
             None
             Section
             	(0, 7) Ident
@@ -872,8 +867,6 @@ section section: : :
             	(17, 18) Colon
             	(18, 19) Whitespace
             	(19, 20) Colon
-            		(16, 17) MissingComma
-            		(18, 19) MissingComma
             None
             Empty
             	(0, 1) Colon
@@ -901,16 +894,22 @@ section section`~]]./\\
             	(0, 5) Ident
             	(5, 6) Colon
             	(6, 7) Whitespace
-            	(7, 14) Other
+            	(7, 9) Other
+            	(9, 10) CloseBracket
+            	(10, 11) CloseBracket
+            	(11, 14) Other
             None
-            Instruction
+            Variable
             	(0, 3) Ident
             	(3, 4) Whitespace
             	(4, 7) Ident
             	(7, 8) Whitespace
             	(8, 11) Ident
             	(11, 12) Whitespace
-            	(12, 19) Other
+            	(12, 14) Other
+            	(14, 15) CloseBracket
+            	(15, 16) CloseBracket
+            	(16, 19) Other
             None
             Variable
             	(0, 3) Ident
@@ -924,17 +923,26 @@ section section`~]]./\\
             	(17, 18) Comma
             	(18, 19) Whitespace
             	(19, 20) Decimal
-            	(20, 27) Other
+            	(20, 22) Other
+            	(22, 23) CloseBracket
+            	(23, 24) CloseBracket
+            	(24, 27) Other
             None
             Section
             	(0, 7) Ident
             	(7, 8) Whitespace
             	(8, 15) Ident
-            	(15, 22) Other
+            	(15, 17) Other
+            	(17, 18) CloseBracket
+            	(18, 19) CloseBracket
+            	(19, 22) Other
             None
             Empty
             	(0, 1) Whitespace
-            	(1, 8) Other
+            	(1, 3) Other
+            	(3, 4) CloseBracket
+            	(4, 5) CloseBracket
+            	(5, 8) Other
             Some((8, 15))"#]],
     );
 }

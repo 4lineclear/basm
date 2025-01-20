@@ -19,7 +19,6 @@ mod context;
 pub struct LexOutput<S> {
     pub src: S,
     pub lines: Vec<AssembledLine>,
-    pub errors: Vec<(Span, LineError)>,
     pub literals: Vec<(Span, Literal)>,
 }
 
@@ -37,12 +36,11 @@ where
                 Some(AssembledLine { start, line, end })
             })
             .collect();
-        let (literals, errors) = lexer.context.parts();
+        let literals = lexer.context.parts();
 
         Self {
             src,
             lines,
-            errors,
             literals,
         }
     }
@@ -71,7 +69,6 @@ impl AssembledLine {
 #[derive(Debug, Clone, Copy)]
 pub struct Line {
     pub kind: LineKind,
-    pub errors: (u32, u32),
     pub literals: (u32, u32),
     pub comment: Option<Span>,
 }
@@ -79,9 +76,6 @@ pub struct Line {
 impl Line {
     pub fn slice_lit<'a, T>(&self, literals: &'a [T]) -> &'a [T] {
         &literals[self.literals.0 as usize..self.literals.1 as usize]
-    }
-    pub fn slice_err<'a, T>(&self, errors: &'a [T]) -> &'a [T] {
-        &errors[self.errors.0 as usize..self.errors.1 as usize]
     }
 }
 
@@ -125,6 +119,10 @@ impl Span {
         self.to += offset;
         self
     }
+
+    pub fn len(&self) -> u32 {
+        self.to - self.from
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -149,22 +147,12 @@ pub enum Literal {
     // Float,
     Hex,
     Ident,
-    Deref,
     String,
     Comma,
     Colon,
+    OpenBracket,
+    CloseBracket,
     Other,
-}
-
-#[derive(Debug)]
-pub enum LineError {
-    MissingComma,
-    // UnknownChar(char),
-    UnclosedDeref,
-    /// A deref with incorrect token
-    EmptyDeref,
-    /// A deref with incorrect token
-    MuddyDeref,
 }
 
 type Charred<'a> = Peekable<CharIndices<'a>>;
@@ -176,25 +164,6 @@ pub struct Lexer<'a> {
     context: Context<'a>,
     chars: Charred<'a>,
 }
-
-// fn check_comma(
-//     &mut self,
-//     span: Span,
-// ) {
-//     match &literals[self.lit_start as usize..] {
-//         [(s1, Literal::Ident)] if self.last_comma > 0 => {
-//             if let LineKind::Instruction(s0) = self.kind {
-//                 self.kind = LineKind::Variable(s0, *s1);
-//             }
-//             literals.pop();
-//         }
-//         [.., l1] if self.last_comma > 0 => {
-//             errors.push((l1.0.between(span), LineError::MissingComma));
-//         }
-//         _ => (),
-//     }
-//     self.last_comma += 1;
-// }
 
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
@@ -234,6 +203,24 @@ impl<'a> Lexer<'a> {
                     let (span, lit) = self.digit(pos, ch);
                     self.context.push_lit(span, lit);
                 }
+                '[' => self.context.push_lit(pos, Literal::OpenBracket),
+                ']' => self.context.push_lit(pos, Literal::CloseBracket),
+                //         '[' => {
+                //             if let Some((_, deref)) = deref {
+                //                 self.push_other(Span::point(deref), &mut muddled)
+                //             }
+                //             deref = Some((self.literals.len(), pos));
+                //         }
+                //         ']' if deref.is_some() => {
+                //             let (orig, deref_open) = deref.unwrap();
+                //             let span = Span::new(deref_open, pos + 1);
+                //             match &mut self.literals[orig..] {
+                //                 [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
+                //                 [.., _] => self.errors.push((span, LineError::MuddyDeref)),
+                //                 [] => self.errors.push((span, LineError::EmptyDeref)),
+                //             }
+                //             deref = None;
+                //         }
                 ':' => self.context.push_lit(pos, Literal::Colon),
                 ',' => self.context.push_lit(pos, Literal::Comma),
                 ';' => break Some(Span::new(pos, line.len() as u32)),
@@ -244,134 +231,7 @@ impl<'a> Lexer<'a> {
             comment,
             ..self.context.line()
         }
-        //
-        // let mut muddled = false;
-        // let mut last_comma = 0;
-        // let mut deref = None;
-        // let mut comment = None;
-        // let mut kind = LineKind::Empty;
-        //
-        // let err_start = self.errors.len() as u32;
-        // let lit_start = self.literals.len() as u32;
-        //
-        //
-        // while let Some((pos, ch)) = self.chars.next() {
-        //     let pos = pos as u32;
-        //
-        //     match ch {
-        //         ',' => last_comma = 0,
-        //         _ if ch.is_whitespace() => self.push_ws(Span::point(pos)),
-        //         'a'..='z' | 'A'..='Z' | '_' => {
-        //             let span = Span::new(pos, self.ident(pos));
-        //             self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
-        //             match (&kind, muddled) {
-        //                 (LineKind::Empty, false) => kind = LineKind::Instruction(span),
-        //                 (LineKind::Instruction(s0), false) if s0.slice(line) == "section" => {
-        //                     kind = LineKind::Section(*s0, span);
-        //                 }
-        //                 _ => {
-        //                     self.literals.push((span, Literal::Ident));
-        //                     muddled = true;
-        //                 }
-        //             };
-        //         }
-        //         '"' => {
-        //             let span = Span::new(pos, self.string(pos));
-        //             self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
-        //             self.literals.push((span, Literal::String));
-        //             muddled = true;
-        //         }
-        //         ':' => {
-        //             if let LineKind::Instruction(s) = kind {
-        //                 kind = LineKind::Label(s)
-        //             } else {
-        //                 self.push_other(Span::point(pos), &mut muddled)
-        //             }
-        //         }
-        //         '0'..='9' => {
-        //             let (span, lit) = self.digit(pos, ch);
-        //             self.check_comma(&mut kind, &mut last_comma, lit_start, span, muddled);
-        //             self.literals.push((span, lit));
-        //             muddled = true;
-        //         }
-        //         '[' => {
-        //             if let Some((_, deref)) = deref {
-        //                 self.push_other(Span::point(deref), &mut muddled)
-        //             }
-        //             deref = Some((self.literals.len(), pos));
-        //         }
-        //         ']' if deref.is_some() => {
-        //             let (orig, deref_open) = deref.unwrap();
-        //             let span = Span::new(deref_open, pos + 1);
-        //             match &mut self.literals[orig..] {
-        //                 [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
-        //                 [.., _] => self.errors.push((span, LineError::MuddyDeref)),
-        //                 [] => self.errors.push((span, LineError::EmptyDeref)),
-        //             }
-        //             deref = None;
-        //         }
-        //         ';' => {
-        //             comment = Some(Span::new(pos, line.len() as u32));
-        //             break;
-        //         }
-        //         _ => self.push_other(Span::point(pos), &mut muddled),
-        //     }
-        // }
-        // if let Some((_, p)) = deref {
-        //     self.errors.push((Span::point(p), LineError::UnclosedDeref));
-        // }
-        // Line {
-        //     kind,
-        //     errors: (err_start, self.errors.len() as u32),
-        //     literals: (lit_start, self.literals.len() as u32),
-        //     comment,
-        // }
     }
-
-    // fn push_other(&mut self, span: Span, muddled: &mut bool) {
-    //     match &mut self.literals[..] {
-    //         [.., (s, Literal::Other)] if s.to == span.from => {
-    //             s.to = span.to;
-    //         }
-    //         _ => self.literals.push((span, Literal::Other)),
-    //     };
-    //     *muddled = true;
-    // }
-    //
-    // fn push_ws(&mut self, span: Span) {
-    //     match &mut self.literals[..] {
-    //         [.., (s, Literal::Whitespace)] if s.to == span.from => {
-    //             s.to = span.to;
-    //         }
-    //         _ => self.literals.push((span, Literal::Whitespace)),
-    //     };
-    // }
-
-    // fn check_comma(
-    //     &mut self,
-    //     kind: &mut LineKind,
-    //     last_comma: &mut u32,
-    //     lit_start: u32,
-    //     span: Span,
-    //     muddled: bool,
-    // ) {
-    //     // println!("{kind:?} {last_comma} {lit_start} {span:?}");
-    //     match &self.literals[lit_start as usize..] {
-    //         [(s1, Literal::Ident)] if *last_comma > 0 => {
-    //             if let LineKind::Instruction(s0) = kind {
-    //                 *kind = LineKind::Variable(*s0, *s1);
-    //             }
-    //             self.literals.pop();
-    //         }
-    //         [..] if !muddled => return,
-    //         [.., (s, _)] if *last_comma > 0 => {
-    //             self.errors
-    //                 .push((Span::new(s.from, span.from + 1), LineError::MissingComma));
-    //         }
-    //         _ => (),
-    //     }
-    //     *last_comma += 1;
-    // }
 
     fn until(&mut self, start: u32, check: impl Fn(char) -> bool) -> u32 {
         let mut last = start;

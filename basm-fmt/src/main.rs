@@ -17,7 +17,6 @@ fn main() {
                 kind: al.line.kind,
                 comment: al.line.comment,
                 line_src: al.line_src(lo.src.as_ref()),
-                errors: al.line.slice_err(&lo.errors),
                 literals: al.line.slice_lit(&lo.literals),
                 fmt,
             },
@@ -32,16 +31,15 @@ fn fmt_line(out: &mut String, ctx: basm_fmt::LineCtx<'_>) {
         kind,
         comment,
         line_src,
-        errors,
         literals,
         // fmt,
         ..
     } = ctx;
-    if errors.len() != 0 {
-        out.push_str(line_src);
-        out.push('\n');
-        return;
-    }
+    // if errors.len() != 0 {
+    //     out.push_str(line_src);
+    //     out.push('\n');
+    //     return;
+    // }
     // let spaces = " ".repeat(fmt.tab_size as usize);
     // let slice = |s| literals[s as usize].0.slice(line_src);
     // match kind {
