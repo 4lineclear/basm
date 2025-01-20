@@ -38,8 +38,6 @@ pub fn fmt<'a, S: AsRef<str>>(
     })
 }
 
-// TODO: remove excess spaces
-
 #[derive(Debug, Clone, Copy)]
 pub struct LineCtx<'a> {
     pub line: u32,
@@ -53,12 +51,9 @@ pub struct LineCtx<'a> {
 pub fn fmt_line(ctx: LineCtx<'_>) -> impl Iterator<Item = Edit> + '_ {
     let LineCtx {
         line,
-        // kind,
         comment,
         line_src,
-        // errors,
         literals,
-        // fmt,
         ..
     } = ctx;
     let edit = |span, change| Edit { line, span, change };
@@ -76,7 +71,7 @@ pub fn fmt_line(ctx: LineCtx<'_>) -> impl Iterator<Item = Edit> + '_ {
             });
             let trim_start = src.trim_start();
             let trim_start =
-                (trim_start.len() + 1 != src.len() && trim_start.len() != 0).then(|| {
+                (trim_start.len() + 1 != src.len() && !trim_start.is_empty()).then(|| {
                     let mut span = post_semi;
                     span.to -= trim_start.len() as u32;
                     edit(span, " ".into())

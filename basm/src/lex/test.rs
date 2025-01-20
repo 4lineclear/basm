@@ -2,8 +2,6 @@ use expect_test::{expect, Expect};
 
 use super::{LexOutput, Line};
 
-// TODO: create a better stringify that assembles lines, errors, and literals
-// into the actual order they appear in.
 fn print_line<S: AsRef<str>>(l: &Line, lexer: &LexOutput<S>) -> String {
     format!(
         "{:?}\n{}{:?}",
@@ -318,7 +316,6 @@ fn variable_err() {
             None"#]],
     );
 }
-// msg db "ONE TWO THREE" 12309 12
 #[test]
 fn hello_world() {
     check(

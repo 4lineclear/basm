@@ -63,7 +63,7 @@ fn fmt_line(out: &mut String, ctx: basm_fmt::LineCtx<'_>) {
     //         out.push_str(slice(span1));
     //     }
     // };
-    if literals.len() != 0 {
+    if !literals.is_empty() {
         if !matches!(kind, Empty) {
             out.push_str(" ");
         }
@@ -79,12 +79,12 @@ fn fmt_line(out: &mut String, ctx: basm_fmt::LineCtx<'_>) {
         }
         out.push_str(";");
         let trim = &span.slice(line_src)[1..].trim_start();
-        if trim.len() != 0 {
+        if !trim.is_empty() {
             out.push_str(" ");
         }
         out.push_str(trim);
     }
-    while out.ends_with(|c| matches!(c, ' ' | '\t')) {
+    while out.ends_with([' ', '\t']) {
         out.pop();
     }
     out.push('\n');

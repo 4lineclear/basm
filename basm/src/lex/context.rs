@@ -12,8 +12,6 @@ pub struct Context<'a> {
     valid_literals: u32,
 }
 
-// TODO: consider removing global & section
-
 impl Context<'_> {
     pub fn line(&mut self) -> Line {
         let line = Line {
@@ -79,29 +77,12 @@ impl Context<'_> {
         }
         self.literals.push((span, lit));
     }
-    // fn err(&mut self, span: impl Spanned, err: LineError) {
-    //     let span = span.spanned();
-    //     self.errors.push((span, err));
-    // }
-    // fn current_literals(&self) -> &[(Span, Literal)] {
-    //     &self.literals[self.lit_start as usize..]
-    // }
-    // fn literal_count(&self) -> u32 {
-    //     self.literals.len() as u32 - self.lit_start
-    // }
-
     pub fn parts(self) -> Vec<(Span, Literal)> {
         self.literals
     }
 }
 
 impl<'a> Context<'a> {
-    // pub fn new(src: &'a str) -> Self {
-    //     Self {
-    //         src,
-    //         ..Self::default()
-    //     }
-    // }
     pub fn reset(&mut self, line: &'a str) {
         self.line_src = line;
         self.kind = LineKind::Empty;

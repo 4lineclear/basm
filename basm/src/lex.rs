@@ -123,6 +123,9 @@ impl Span {
     pub fn len(&self) -> u32 {
         self.to - self.from
     }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -142,9 +145,6 @@ pub enum Literal {
     Binary,
     Octal,
     Decimal,
-    // TODO: currently floats are saved as decimals,
-    // save them as floats instead
-    // Float,
     Hex,
     Ident,
     String,
@@ -174,7 +174,6 @@ impl<'a> Lexer<'a> {
             chars: "".char_indices().peekable(),
         }
     }
-    // pub fn literals()
     pub fn line(&mut self) -> Option<Line> {
         let line = self.lines.next()?;
         Some(self.line_inner(line))
@@ -205,22 +204,6 @@ impl<'a> Lexer<'a> {
                 }
                 '[' => self.context.push_lit(pos, Literal::OpenBracket),
                 ']' => self.context.push_lit(pos, Literal::CloseBracket),
-                //         '[' => {
-                //             if let Some((_, deref)) = deref {
-                //                 self.push_other(Span::point(deref), &mut muddled)
-                //             }
-                //             deref = Some((self.literals.len(), pos));
-                //         }
-                //         ']' if deref.is_some() => {
-                //             let (orig, deref_open) = deref.unwrap();
-                //             let span = Span::new(deref_open, pos + 1);
-                //             match &mut self.literals[orig..] {
-                //                 [l @ (_, Literal::Ident)] => *l = (span, Literal::Deref),
-                //                 [.., _] => self.errors.push((span, LineError::MuddyDeref)),
-                //                 [] => self.errors.push((span, LineError::EmptyDeref)),
-                //             }
-                //             deref = None;
-                //         }
                 ':' => self.context.push_lit(pos, Literal::Colon),
                 ',' => self.context.push_lit(pos, Literal::Comma),
                 ';' => break Some(Span::new(pos, line.len() as u32)),
