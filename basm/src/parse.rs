@@ -1,3 +1,129 @@
+use ahash::AHashMap;
+
+use Literal::*;
+
+use crate::lex::{Lexer, Literal, Span};
+use crate::{Basm, Line};
+
+pub fn parse(src: &str) -> (Basm, Vec<ParseError>) {
+    use crate::lex::LineKind::*;
+
+    let mut labels = AHashMap::new();
+    let mut lines = Vec::new();
+    let mut sections = Vec::new();
+    let mut errors = Vec::new();
+
+    let mut lexer = Lexer::new(src);
+
+    let mut i = 0;
+    let mut ls = 0;
+    while let Some(ll) = lexer.line() {
+        let start = lexer.line_starts()[ls - 1];
+        let end = lexer.line_starts()[ls];
+        let src_line = &src[start as usize..end as usize];
+        let literals = ll.slice_lit(&lexer.literals());
+        match ll.kind {
+            Empty => {
+                lines.push(Line::NoOp);
+                if !literals.is_empty() {
+                    // handle error
+                }
+            }
+            Label => {
+                todo!()
+                // labels.insert(, v)
+            }
+            Section => todo!(),
+            Global => todo!(),
+            Instruction => todo!(),
+            Variable => todo!(),
+        };
+        while i < literals.len() {}
+        ls += 1;
+    }
+
+    (
+        Basm {
+            src,
+            labels,
+            lines,
+            sections,
+        },
+        errors,
+    )
+}
+
+fn label(literals: &[(Span, Literal)]) -> Result<(), ParseError> {
+    let ident = ident(literals)?;
+    todo!()
+}
+
+fn ident(literals: &[(Span, Literal)]) -> Result<usize, ParseError> {
+    let mut liter = literals.iter().enumerate();
+    loop {
+        let Some((i, (_, lit))) = liter.next() else {
+            break Err(CompilerError::WrongToken().into());
+        };
+        match lit {
+            Whitespace => (),
+            Ident => break Ok(i),
+            Other => eprintln!("Other token found"),
+            _ => {
+                eprintln!("incorrect token found: {lit:?}");
+                break Err(CompilerError::WrongToken().into());
+            }
+        }
+    }
+    // Err(())
+}
+
+fn values() {}
+
+#[derive(Debug)]
+pub enum ParseError {
+    User(UserError),
+    Compiler(CompilerError),
+}
+
+#[derive(Debug)]
+pub enum UserError {}
+
+#[derive(Debug)]
+pub enum CompilerError {
+    WrongToken(),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::User(user_error) => user_error.fmt(f),
+            ParseError::Compiler(compiler_error) => compiler_error.fmt(f),
+        }
+    }
+}
+impl std::fmt::Display for UserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl std::fmt::Display for CompilerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for ParseError {}
+impl From<UserError> for ParseError {
+    fn from(value: UserError) -> Self {
+        Self::User(value)
+    }
+}
+impl From<CompilerError> for ParseError {
+    fn from(value: CompilerError) -> Self {
+        Self::Compiler(value)
+    }
+}
 // use crate::lex::{LexOutput, Literal, Span};
 //
 // #[derive(Debug)]

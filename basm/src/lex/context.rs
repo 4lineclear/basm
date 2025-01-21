@@ -13,7 +13,10 @@ pub struct Context<'a> {
 }
 
 impl Context<'_> {
-    pub fn line(&mut self) -> LexLine {
+    pub(super) fn literals(&self) -> &[(Span, Literal)] {
+        &self.literals
+    }
+    pub(super) fn line(&mut self) -> LexLine {
         let line = LexLine {
             kind: self.kind,
             literals: (self.lit_start, self.literals.len() as u32),
@@ -27,7 +30,7 @@ impl Context<'_> {
         self.valid_literals = 0;
         line
     }
-    pub fn push_lit(&mut self, span: impl Spanned, lit: Literal) {
+    pub(super) fn push_lit(&mut self, span: impl Spanned, lit: Literal) {
         use LineKind::*;
         use Literal::*;
         let span = span.spanned();
