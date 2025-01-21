@@ -1,78 +1,34 @@
-#[cfg(test)]
-mod test;
-
-pub use private::Lexer;
-
-mod context;
-mod private;
+use std::str::Chars;
 
 // TODO: create float lexing
 
 // TODO: create a testing system that is synchronized between
 // the lexing testing and the lsp's semantic token testing.
 
-#[derive(Debug)]
-pub struct LexOutput<S> {
-    pub src: S,
-    pub lines: Vec<AssembledLine>,
-    pub literals: Vec<(Span, Literal)>,
+#[cfg(test)]
+mod test;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lexeme {
+    Whitespace,
+    Ident,
+    String,
+    Comma,
+    Colon,
+    OpenBracket,
+    CloseBracket,
+    Digit(DigitBase),
+    Eol(bool),
+    Eof,
+    Other,
 }
 
-impl<S> LexOutput<S>
-where
-    S: AsRef<str>,
-{
-    pub fn lex_all(src: S) -> Self {
-        let mut lexer = Lexer::new(src.as_ref());
-        let lines: Vec<_> = (1..)
-            .map_while(|i| {
-                let line = lexer.line()?;
-                let start = lexer.line_starts()[i - 1];
-                let end = lexer.line_starts()[i];
-                Some(AssembledLine { start, line, end })
-            })
-            .collect();
-        let literals = lexer.parts();
-
-        Self {
-            src,
-            lines,
-            literals,
-        }
-    }
-
-    pub fn line_src(&self, line: usize) -> &str {
-        self.lines[line].line_src(self.src.as_ref())
-    }
-    pub fn line_range(&self, line: usize) -> (u32, u32) {
-        (self.lines[line].start, self.lines[line].end)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct AssembledLine {
-    pub start: u32,
-    pub end: u32,
-    pub line: LexLine,
-}
-
-impl AssembledLine {
-    pub fn line_src<'a>(&self, src: &'a str) -> &'a str {
-        &src[self.start as usize..self.end as usize - 1]
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct LexLine {
-    pub kind: LineKind,
-    pub literals: (u32, u32),
-    pub comment: Option<Span>,
-}
-
-impl LexLine {
-    pub fn slice_lit<'a, T>(&self, literals: &'a [T]) -> &'a [T] {
-        &literals[self.literals.0 as usize..self.literals.1 as usize]
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DigitBase {
+    Binary = 2,
+    Octal = 8,
+    Decimal = 10,
+    Hex = 16,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -80,6 +36,17 @@ pub struct Span {
     // NOTE: 'from' must come before 'to' for proper ordering
     pub from: u32,
     pub to: u32,
+}
+
+impl From<u32> for Span {
+    fn from(value: u32) -> Self {
+        Span::point(value)
+    }
+}
+impl From<(u32, u32)> for Span {
+    fn from((from, to): (u32, u32)) -> Self {
+        Span::new(from, to)
+    }
 }
 
 impl std::fmt::Debug for Span {
@@ -124,93 +91,110 @@ impl Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum LineKind {
-    #[default]
-    Empty,
-    Label,
-    Section,
-    Global,
-    Instruction,
-    Variable,
+const EOF_CHAR: char = '\0';
+
+pub struct Lexer<'a> {
+    pub src: &'a str,
+    prev: Option<Advance>,
+    chars: Chars<'a>,
+    pos: u32,
+    line: u32,
+    line_start: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Literal {
-    Whitespace,
-    Digit(DigitBase),
-    Ident,
-    String,
-    Comma,
-    Colon,
-    OpenBracket,
-    CloseBracket,
-    Other,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DigitBase {
-    Binary,
-    Octal,
-    Decimal,
-    Hex,
+#[derive(Debug, Clone, Copy)]
+pub struct Advance {
+    pub lex: Lexeme,
+    pub line: u32,
+    pub offset: u32,
+    pub span: Span,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn line(&mut self) -> Option<LexLine> {
-        let line = self.get_line()?;
-        self.reset(line);
-        let comment = loop {
-            match self.advance(line) {
-                Some(None) => (),
-                Some(Some(comment)) => break Some(comment),
-                None => break None,
-            }
-        };
-        Some(LexLine {
-            comment,
-            ..self.line_info()
-        })
-    }
-    fn advance(&mut self, line: &'a str) -> Option<Option<Span>> {
-        let pos = self.pos();
-        let Some(ch) = self.bump() else {
-            return None;
-        };
-        match ch {
-            _ if ch.is_whitespace() => self.push_lit(pos, Literal::Whitespace),
-            _ if is_id_start(ch) => {
-                self.ident();
-                let span = (pos, self.pos());
-                self.push_lit(span, Literal::Ident);
-            }
-            '"' => {
-                self.string();
-                let span = (pos, self.pos());
-                self.push_lit(span, Literal::String);
-            }
-            '0'..='9' => {
-                let base = self.number(ch);
-                let span = (pos, self.pos());
-                self.push_lit(span, Literal::Digit(base));
-            }
-            '[' => self.push_lit(pos, Literal::OpenBracket),
-            ']' => self.push_lit(pos, Literal::CloseBracket),
-            ':' => self.push_lit(pos, Literal::Colon),
-            ',' => self.push_lit(pos, Literal::Comma),
-            ';' => return Some(Some(Span::new(pos, line.len() as u32))),
-            _ => self.push_lit(pos, Literal::Other),
+    pub fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            chars: src.chars(),
+            prev: None,
+            pos: 0,
+            line: 0,
+            line_start: 0,
         }
-        Some(None)
     }
 
-    fn ident(&mut self) {
-        self.eat_while(is_id_continue);
+    pub fn peek(&mut self) -> Advance {
+        self.prev.unwrap_or_else(|| self.advance())
     }
-    fn string(&mut self) {
+
+    fn store(&mut self, ad: Advance) -> Advance {
+        self.prev = Some(ad);
+        ad
+    }
+
+    // TODO: return struct instead of tuple
+    pub fn advance(&mut self) -> Advance {
+        // if let Some(prev) = self.prev.take() {
+        //     return prev;
+        // }
+        let line = self.line;
+        let offset = self.line_start;
+        let start = self.pos;
+        let Some(first_char) = self.bump() else {
+            return self.store(Advance {
+                lex: Lexeme::Eof,
+                line: self.line,
+                offset,
+                span: start.into(),
+            });
+        };
+        let lex = match first_char {
+            ';' => {
+                self.eat_while(|ch| ch != '\n');
+                self.bump();
+                Lexeme::Eol(true)
+            }
+            c if ws_not_nl(c) => self.whitespace(),
+            c if is_id_start(c) => self.ident(),
+            c @ '0'..='9' => Lexeme::Digit(self.number(c)),
+            // One-symbol tokens.
+            '\n' => Lexeme::Eol(false),
+            ',' => Lexeme::Comma,
+            '[' => Lexeme::OpenBracket,
+            ']' => Lexeme::CloseBracket,
+            ':' => Lexeme::Colon,
+            // String literal.
+            '"' => self.string(),
+            _ => {
+                self.eat_while(is_other);
+                Lexeme::Other
+            }
+        };
+        if let Lexeme::Eol(_) = lex {
+            self.line += 1;
+            self.line_start = self.pos();
+        }
+        let span = (start, self.pos()).into();
+        return self.store(Advance {
+            lex,
+            line,
+            offset,
+            span,
+        });
+    }
+
+    fn whitespace(&mut self) -> Lexeme {
+        self.eat_while(ws_not_nl);
+        Lexeme::Whitespace
+    }
+
+    fn ident(&mut self) -> Lexeme {
+        self.eat_while(is_id_continue);
+        Lexeme::Ident
+    }
+    fn string(&mut self) -> Lexeme {
         while let Some(c) = self.bump() {
             match c {
-                '"' => return,
+                '"' => break,
                 '\\' if self.first() == '\\' || self.first() == '"' => {
                     // Bump again to skip escaped character.
                     self.bump();
@@ -218,6 +202,7 @@ impl<'a> Lexer<'a> {
                 _ => (),
             }
         }
+        Lexeme::String
     }
 
     // TODO: eventually add floats back in
@@ -295,6 +280,32 @@ impl<'a> Lexer<'a> {
         }
         has_digits
     }
+    fn first(&mut self) -> char {
+        self.chars.clone().next().unwrap_or(EOF_CHAR)
+    }
+    #[allow(unused)]
+    fn second(&self) -> char {
+        let mut iter = self.chars.clone();
+        iter.next();
+        iter.next().unwrap_or(EOF_CHAR)
+    }
+    fn bump(&mut self) -> Option<char> {
+        self.pos += 1;
+        self.chars.next()
+    }
+    /// Checks if there is nothing more to consume.
+    #[must_use]
+    fn is_eof(&self) -> bool {
+        self.chars.as_str().is_empty()
+    }
+    fn eat_while(&mut self, mut predicate: impl FnMut(char) -> bool) {
+        while predicate(self.first()) && !self.is_eof() {
+            self.bump();
+        }
+    }
+    fn pos(&mut self) -> u32 {
+        self.pos
+    }
 }
 
 fn is_id_start(first: char) -> bool {
@@ -304,4 +315,36 @@ fn is_id_start(first: char) -> bool {
 }
 fn is_id_continue(ch: char) -> bool {
     matches!(ch,'a'..='z' | 'A'..='Z' | '_' | '0'..='9')
+}
+
+/// returns true on all non newline whitespace
+#[must_use]
+pub const fn ws_not_nl(c: char) -> bool {
+    matches!(
+        c,
+        // Usual ASCII suspects
+        '\u{0009}'   // \t
+        | '\u{000B}' // vertical tab
+        | '\u{000C}' // form feed
+        | '\u{000D}' // \r
+        | '\u{0020}' // space
+
+        // NEXT LINE from latin1
+        | '\u{0085}'
+
+        // Bidi markers
+        | '\u{200E}' // LEFT-TO-RIGHT MARK
+        | '\u{200F}' // RIGHT-TO-LEFT MARK
+
+        // Dedicated whitespace characters from Unicode
+        | '\u{2028}' // LINE SEPARATOR
+        | '\u{2029}' // PARAGRAPH SEPARATOR
+    )
+}
+
+// WARNING: needs to be synchronised with Lexer::advance
+fn is_other(c: char) -> bool {
+    !(ws_not_nl(c)
+        | is_id_start(c)
+        | matches!(c, '0'..='9' | '\n' | ',' | '[' | ']' | ':' | '"' | ';'))
 }

@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
+# thiserror = "2.0"
 ahash = { workspace = true }
 # unicode
 # unicode-ident = "1.0"

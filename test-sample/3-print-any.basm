@@ -13,7 +13,6 @@ _start:
     mov rax, whats_up
     call print
 
-
     mov rax, long_text
     call print
 

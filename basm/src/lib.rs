@@ -5,12 +5,21 @@ pub mod parse;
 
 pub type Address = u16;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Basm<'a> {
     pub src: &'a str,
-    pub labels: AHashMap<&'a str, Address>,
-    pub lines: Vec<Line<'a>>,
+    pub labels: AHashMap<Span, Address>,
+    pub lines: Vec<Line>,
     pub sections: Vec<Section>,
+}
+
+impl<'a> Basm<'a> {
+    fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -27,33 +36,27 @@ pub enum SectionKind {
 }
 
 #[derive(Debug)]
-pub enum Line<'a> {
+pub enum Line {
     NoOp,
     Instruction {
-        values: Vec<Value<'a>>,
+        values: Vec<Value>,
     },
-    VariableValue {
-        name: &'a str,
-        r#type: &'a str,
-        value: Either<u16, Vec<Value<'a>>>,
+    Variable {
+        name: Span,
+        r#type: Span,
+        values: Vec<Value>,
     },
 }
 
 #[derive(Debug)]
-pub enum Value<'a> {
-    Digit(DigitKind, u32),
-    Ident(&'a str),
+pub enum Value {
+    Ident(Span),
     String(String),
+    Digit(DigitBase, u32),
 }
 
-#[derive(Debug)]
-pub enum DigitKind {
-    Binary,
-    Octal,
-    Decimal,
-    Hex,
-    Float,
-}
+pub use self::lex::DigitBase;
+use self::lex::Span;
 
 #[derive(Debug)]
 pub enum Either<A, B> {
