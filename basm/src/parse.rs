@@ -50,6 +50,8 @@ impl<'a> Parser<'a> {
         (self.basm, self.errors)
     }
 
+    // TODO: accept any value here, with idents leading to possible vars,
+    // else fast track to a pure ins parse.
     fn post_ident(&mut self, ad: Advance) {
         let ad2 = self.non_ws();
         match ad2.lex {
@@ -57,7 +59,7 @@ impl<'a> Parser<'a> {
                 let Some((values, ins)) = self.values(ad2.span) else {
                     return;
                 };
-                self.basm.lines.push(if ins || values.is_empty() {
+                self.basm.lines.push(if ins {
                     Line::Instruction {
                         ins: ad.span,
                         values,
@@ -126,7 +128,7 @@ impl<'a> Parser<'a> {
         let mut values = vec![];
 
         let peek = self.lexer.peek();
-        let ins = Lexeme::Comma == peek.lex;
+        let ins = matches!(peek.lex, Comma | Eol(_) | Eof);
         if ins {
             values.push(Value::Ident(id2));
             self.lexer.pop_peek();
