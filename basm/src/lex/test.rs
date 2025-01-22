@@ -1,11 +1,9 @@
 use expect_test::{expect, Expect};
 
-use crate::lex::Lexeme;
-
-use super::{Advance, Lexer};
+use super::{Advance, BaseLexer, Lexeme, Lexer, RecordedLexer};
 
 fn check(src: &str, expect: Expect) {
-    let mut lexer = Lexer::new(src);
+    let mut lexer = BaseLexer::new(src);
     let output = "0:(0, 0)=Start".to_owned()
         + &std::iter::from_fn(|| match lexer.advance() {
             Advance {
@@ -879,4 +877,36 @@ fn empty_not_instruction() {
             	16:(31, 32)=Whitespace
             	16:(32, 36)=Ident"#]],
     );
+}
+
+#[test]
+fn recorded_equivalent() {
+    let src = include_str!("../../../test-sample/0-hello.asm");
+    let mut l1 = Vec::new();
+    let mut l2 = Vec::new();
+    let mut b1 = BaseLexer::new(src);
+    let mut b2 = BaseLexer::new(src);
+    let mut r1 = RecordedLexer::new(src);
+    let mut r2 = RecordedLexer::new(src);
+    println!("{b2:?}\n{r2:?}");
+    loop {
+        let ba1 = b1.advance();
+        let ra1 = r1.advance();
+        let ba2 = b2.peek();
+        let ra2 = r2.peek();
+        l1.push(ba1);
+        l2.push(ba2);
+        assert_eq!(ba1, ra1);
+        assert_eq!(ba2, ra2);
+        assert_eq!(ba1, ra2);
+        assert_eq!(ba2, ra2);
+        assert_eq!(b2.pop_peek(), r2.pop_peek());
+        if Lexeme::Eof == ba1.lex {
+            break;
+        }
+    }
+    assert_eq!(l1, l2);
+    assert_eq!(r1.store, r2.store);
+    assert_eq!(l1, r1.store);
+    assert_eq!(l2, r2.store);
 }

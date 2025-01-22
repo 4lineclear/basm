@@ -1,6 +1,6 @@
 use crate::{
     lex::{
-        Advance,
+        Advance, BaseLexer,
         Lexeme::{self, *},
         Lexer, Span,
     },
@@ -14,20 +14,23 @@ mod test;
 
 // TODO: replace breaks with error propagation
 
-pub struct Parser<'a> {
-    lexer: Lexer<'a>,
+pub struct Parser<'a, L> {
+    lexer: L,
     basm: Basm<'a>,
     errors: Vec<ParseError>,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> Parser<'a, BaseLexer<'a>> {
     pub fn new(src: &'a str) -> Self {
         Self {
-            lexer: Lexer::new(src),
+            lexer: BaseLexer::new(src),
             basm: Basm::new(src),
             errors: Vec::new(),
         }
     }
+}
+
+impl<'a, L: Lexer> Parser<'a, L> {
     pub fn parse(mut self) -> (Basm<'a>, Vec<ParseError>) {
         loop {
             let ad = self.lexer.advance();

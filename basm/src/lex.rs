@@ -93,7 +93,66 @@ impl Span {
 
 const EOF_CHAR: char = '\0';
 
-pub struct Lexer<'a> {
+pub trait Lexer {
+    fn pop_peek(&mut self) -> Option<Advance>;
+    fn peek(&mut self) -> Advance;
+    fn advance(&mut self) -> Advance;
+}
+
+impl Lexer for BaseLexer<'_> {
+    fn pop_peek(&mut self) -> Option<Advance> {
+        self.pop_peek()
+    }
+    fn peek(&mut self) -> Advance {
+        self.peek()
+    }
+    fn advance(&mut self) -> Advance {
+        self.advance()
+    }
+}
+
+#[derive(Debug)]
+pub struct RecordedLexer<'a> {
+    pub base: BaseLexer<'a>,
+    store: Vec<Advance>,
+}
+
+impl<'a> RecordedLexer<'a> {
+    pub fn new(src: &'a str) -> Self {
+        let base = BaseLexer::new(src);
+        let store = Vec::new();
+        Self { base, store }
+    }
+}
+
+impl<'a> Lexer for RecordedLexer<'a> {
+    fn pop_peek(&mut self) -> Option<Advance> {
+        self.base.pop_peek()
+    }
+
+    fn peek(&mut self) -> Advance {
+        if self.base.prev.is_some() {
+            self.base.peek()
+        } else {
+            let ad = self.base.peek();
+            self.store.push(ad);
+            ad
+        }
+    }
+
+    fn advance(&mut self) -> Advance {
+        if self.base.prev.is_some() {
+            self.base.advance()
+        } else {
+            let ad = self.base.advance();
+            self.store.push(ad);
+            ad
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct BaseLexer<'a> {
     pub src: &'a str,
     prev: Option<Advance>,
     chars: Chars<'a>,
@@ -102,7 +161,7 @@ pub struct Lexer<'a> {
     line_start: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Advance {
     pub lex: Lexeme,
     pub line: u32,
@@ -110,7 +169,7 @@ pub struct Advance {
     pub span: Span,
 }
 
-impl<'a> Lexer<'a> {
+impl<'a> BaseLexer<'a> {
     pub fn new(src: &'a str) -> Self {
         Self {
             src,
@@ -122,11 +181,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn pop_peek(&mut self) -> Option<Advance> {
+    fn pop_peek(&mut self) -> Option<Advance> {
         self.prev.take()
     }
 
-    pub fn peek(&mut self) -> Advance {
+    fn peek(&mut self) -> Advance {
         if let Some(prev) = self.prev {
             prev
         } else {
@@ -137,7 +196,7 @@ impl<'a> Lexer<'a> {
     }
 
     // TODO: return struct instead of tuple
-    pub fn advance(&mut self) -> Advance {
+    fn advance(&mut self) -> Advance {
         if let Some(prev) = self.prev.take() {
             return prev;
         }
@@ -324,7 +383,7 @@ fn is_id_continue(ch: char) -> bool {
 
 /// returns true on all non newline whitespace
 #[must_use]
-pub const fn ws_not_nl(c: char) -> bool {
+const fn ws_not_nl(c: char) -> bool {
     matches!(
         c,
         // Usual ASCII suspects

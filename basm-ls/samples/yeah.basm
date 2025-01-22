@@ -1,8 +1,0 @@
-
-section text
-section data
-section main
-
-main: ; one two three
-    this is, [etext] ; ASD
-; one two three

@@ -1,6 +1,5 @@
+// // use basm::lex::{LexOutput, Literal, Span};
 // use std::sync::Arc;
-//
-// use basm::lex::{LexOutput, Literal, Span};
 //
 // use basm_fmt::FmtContext;
 // use dashmap::DashMap;
