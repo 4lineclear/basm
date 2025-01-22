@@ -31,81 +31,70 @@ impl<'a> Parser<'a> {
     pub fn parse(mut self) -> (Basm<'a>, Vec<ParseError>) {
         loop {
             let ad = self.lexer.advance();
-            match ad.lex {
-                Whitespace => (),
+            let e = match ad.lex {
+                Whitespace => Ok(()),
                 Ident => match self.slice(ad.span) {
                     "section" => self.section(),
-                    _ => self.post_ident(ad),
+                    _ => self.parse_line(ad),
                 },
                 Eol(_) => {
                     self.basm.lines.push(Line::NoOp);
+                    Ok(())
                 }
                 Eof => break,
-                _ => {
-                    self.expected(ad, "Ident | Eol | Eof");
-                    self.kill_line();
-                }
+                _ => Err(self.expected(ad, "Ident | Eol | Eof")),
+            };
+            if let Err(e) = e {
+                self.errors.push(e);
             }
         }
         (self.basm, self.errors)
     }
 
-    // TODO: accept any value here, with idents leading to possible vars,
-    // else fast track to a pure ins parse.
-    fn post_ident(&mut self, ad: Advance) {
-        let ad2 = self.non_ws();
-        match ad2.lex {
-            Ident => {
-                let Some((values, ins)) = self.values(ad2.span) else {
-                    return;
-                };
-                self.basm.lines.push(if ins {
-                    Line::Instruction {
-                        ins: ad.span,
-                        values,
-                    }
-                } else {
-                    Line::Variable {
-                        name: ad.span,
-                        r#type: ad2.span,
-                        values,
-                    }
-                });
+    fn parse_line(&mut self, first: Advance) -> ParseResult<()> {
+        let second = self.peek_non_ws();
+        if let Colon = second.lex {
+            self.lexer.pop_peek();
+            self.clear_line()?;
+            let address = self.current_address();
+            let key = self.slice(first.span);
+            if self.basm.labels.contains_key(key) {
+                return Err(ParseErrorKind::DuplicateLabel(key.to_owned(), address).full(first));
+            } else {
+                self.basm.labels.insert(key, address);
             }
-            Eol(_) | Eof => self.basm.lines.push(Line::Instruction {
-                ins: ad.span,
-                values: vec![],
-            }),
-            Colon if self.clear_line() => {
-                let address = self.current_address();
-                let key = self.slice(ad.span);
-                if self.basm.labels.contains_key(key) {
-                    self.errors
-                        .push(ParseErrorKind::DuplicateLabel(key.to_owned(), address).full(ad));
-                } else {
-                    self.basm.labels.insert(key, address);
-                }
-            }
-            Colon => (),
-            _ => {
-                self.expected(ad2, "Ident | Colon");
-                self.kill_line();
-            }
+            return Ok(());
         }
+        let Some(value) = self.value()? else {
+            self.basm.lines.push(Line::Instruction {
+                ins: first.span,
+                values: vec![],
+            });
+            return Ok(());
+        };
+        let (values, ins) = self.ins_or_var(value)?;
+        self.basm.lines.push(if ins {
+            Line::Instruction {
+                ins: first.span,
+                values,
+            }
+        } else {
+            Line::Variable {
+                name: first.span,
+                r#type: second.span,
+                values,
+            }
+        });
+        Ok(())
     }
 
-    fn section(&mut self) {
+    fn section(&mut self) -> ParseResult<()> {
         let ad = self.non_ws();
         match ad.lex {
             Ident => (),
-            Eol(_) | Eof => {
-                self.errors.push(ParseErrorKind::InputEnd(ad.line).full(ad));
-                return;
-            }
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(ad.line).full(ad)),
             _ => {
-                self.expected(ad, "Ident");
-                self.kill_line();
-                return;
+                return Err(self.expected(ad, "Ident"));
             }
         }
         let kind = match self.slice(ad.span) {
@@ -113,58 +102,62 @@ impl<'a> Parser<'a> {
             "data" => SectionKind::Data,
             "text" => SectionKind::Text,
             _ => {
-                self.expected(ad, "'bss' | 'data' | 'text'");
-                self.kill_line();
-                return;
+                return Err(self.expected(ad, "'bss' | 'data' | 'text'"));
             }
         };
-        if self.clear_line() {
-            let address = self.current_address();
-            self.basm.sections.push(Section { kind, address });
+        self.clear_line()?;
+        let address = self.current_address();
+        self.basm.sections.push(Section { kind, address });
+        Ok(())
+    }
+
+    fn ins_or_var(&mut self, second: Value) -> ParseResult<(Vec<Value>, bool)> {
+        if !matches!(second, Value::Ident(_)) {
+            return Ok((self.values(second)?, true));
+        }
+        if let Comma | Eol(_) | Eof = self.peek_non_ws().lex {
+            return Ok((self.values(second)?, true));
+        }
+        if let Some(value) = self.value()? {
+            Ok((self.values(value)?, false))
+        } else {
+            Ok((self.values(second)?, true))
         }
     }
 
-    fn values(&mut self, id2: Span) -> Option<(Vec<Value>, bool)> {
-        let mut values = vec![];
-
-        let peek = self.lexer.peek();
-        let ins = matches!(peek.lex, Comma | Eol(_) | Eof);
-        if ins {
-            values.push(Value::Ident(id2));
-            self.lexer.pop_peek();
-        }
+    fn values(&mut self, first: Value) -> ParseResult<Vec<Value>> {
+        let mut values = vec![first];
         loop {
             let ad = self.non_ws();
             match ad.lex {
-                Eol(_) | Eof => break Some((values, ins)),
-                Ident => values.push(Value::Ident(ad.span)),
-                Str => values.push(Value::String(
-                    self.slice((ad.span.from + 1, ad.span.to - 1)).to_owned(),
-                )),
-                Digit(base) => match u32::from_str_radix(self.slice(ad.span), base as u32) {
-                    Ok(n) => values.push(Value::Digit(base, n)),
-                    Err(e) => self
-                        .errors
-                        .push(ParseErrorKind::ParseIntError(ad.span, e).full(ad)),
-                },
-                OpenBracket => values.push(Value::Deref(self.after_bracket()?)),
-                _ => {
-                    self.expected(ad, "Ident | Str | Colon | OpenBracket | Digit");
-                    self.kill_line();
-                    break None;
-                }
-            }
-            let ad = self.non_ws();
-            match ad.lex {
                 Comma => (),
-                Eol(_) | Eof => break Some((values, ins)),
+                Eol(_) | Eof => break Ok(values),
                 _ => {
-                    let expected = if ins { "Comma" } else { "Comma | Ident | Str" };
-                    self.expected(ad, expected);
-                    self.kill_line();
-                    break None;
+                    break Err(self.expected(ad, "Comma"));
                 }
             }
+            let Some(value) = self.value()? else {
+                break Ok(values);
+            };
+            values.push(value);
+        }
+    }
+
+    fn value(&mut self) -> ParseResult<Option<Value>> {
+        let ad = self.non_ws();
+        match ad.lex {
+            Eol(_) | Eof => Ok(None),
+            Ident => Ok(Some(Value::Ident(ad.span))),
+            Str => Ok(Some(Value::String(
+                self.slice((ad.span.from + 1, ad.span.to - 1)).to_owned(),
+            ))),
+            Digit(base) => {
+                let n = u32::from_str_radix(self.slice(ad.span), base as u32)
+                    .map_err(|e| ParseErrorKind::ParseIntError(ad.span, e).full(ad))?;
+                Ok(Some(Value::Digit(base, n)))
+            }
+            OpenBracket => Ok(Some(Value::Deref(self.after_bracket()?))),
+            _ => Err(self.expected(ad, "Ident | Str | Colon | OpenBracket | Digit")),
         }
     }
 
@@ -174,15 +167,27 @@ impl<'a> Parser<'a> {
         }
         self.lexer.advance()
     }
+    fn peek_non_ws(&mut self) -> Advance {
+        while let Lexeme::Whitespace = self.lexer.peek().lex {
+            self.lexer.pop_peek();
+        }
+        self.lexer.peek()
+    }
 
-    fn clear_line(&mut self) -> bool {
+    #[allow(unused)]
+    fn advance_if(&mut self, go: impl Fn(Advance) -> bool) {
+        let peek = self.peek_non_ws();
+        if go(peek) {
+            self.lexer.pop_peek();
+        }
+    }
+
+    fn clear_line(&mut self) -> ParseResult<()> {
         let ad = self.non_ws();
         if let Eol(_) | Eof = ad.lex {
-            true
+            Ok(())
         } else {
-            self.expected(ad, "Whitespace");
-            self.kill_line();
-            false
+            Err(self.expected(ad, "Whitespace"))
         }
     }
 
@@ -194,45 +199,35 @@ impl<'a> Parser<'a> {
         u16::try_from(self.basm.lines.len()).expect("failed to convert line address to u16")
     }
 
-    fn expected(&mut self, ad: Advance, expected: impl Into<String>) {
-        self.errors
-            .push(ParseErrorKind::Expected(ad, expected.into()).full(ad));
+    fn expected(&mut self, ad: Advance, expected: impl Into<String>) -> ParseError {
+        self.kill_line();
+        ParseErrorKind::Expected(ad, expected.into()).full(ad)
     }
+
     fn slice(&self, span: impl Into<Span>) -> &'a str {
         span.into().slice(self.basm.src)
     }
 
-    fn after_bracket(&mut self) -> Option<Span> {
+    fn after_bracket(&mut self) -> ParseResult<Span> {
         let ident = self.non_ws();
         match ident.lex {
             Ident => (),
-            Eol(_) | Eof => {
-                self.errors
-                    .push(ParseErrorKind::InputEnd(ident.line).full(ident));
-                return None;
-            }
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(ident.line).full(ident)),
             _ => {
-                self.expected(ident, "Ident");
                 self.kill_line();
-                return None;
+                return Err(self.expected(ident, "Ident"));
             }
         }
         let close = self.non_ws();
         match close.lex {
             CloseBracket => (),
-            Eol(_) | Eof => {
-                self.errors
-                    .push(ParseErrorKind::InputEnd(close.line).full(close));
-                return None;
-            }
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(close.line).full(close)),
             _ => {
-                self.expected(close, "CloseBracket");
                 self.kill_line();
-                return None;
+                return Err(self.expected(close, "CloseBracket"));
             }
         }
-        // values.push(Value::Deref(ident.span));
-        Some(ident.span)
+        Ok(ident.span)
     }
 }
 
