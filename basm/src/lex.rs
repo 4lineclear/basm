@@ -123,6 +123,13 @@ impl<'a> RecordedLexer<'a> {
         let store = Vec::new();
         Self { base, store }
     }
+
+    pub fn store(&self) -> &[Advance] {
+        &self.store
+    }
+    pub fn parts(self) -> (BaseLexer<'a>, Vec<Advance>) {
+        (self.base, self.store)
+    }
 }
 
 impl<'a> Lexer for RecordedLexer<'a> {

@@ -1,4 +1,5 @@
 use ahash::AHashMap;
+use string_interner::{DefaultBackend, DefaultSymbol, StringInterner};
 
 pub mod lex;
 pub mod parse;
@@ -6,15 +7,35 @@ pub mod parse;
 pub type Address = u16;
 
 #[derive(Debug, Default)]
-pub struct Basm<'a> {
-    pub src: &'a str,
-    pub labels: AHashMap<&'a str, Address>,
+pub struct Basm<S> {
+    pub si: StringInterner<DefaultBackend>,
+    pub src: S,
+    pub labels: AHashMap<DefaultSymbol, Address>,
     pub lines: Vec<Line>,
     pub sections: Vec<Section>,
 }
 
-impl<'a> Basm<'a> {
-    fn new(src: &'a str) -> Self {
+pub fn transfer_basm<S1, S2>(
+    Basm {
+        si,
+        labels,
+        lines,
+        sections,
+        src: _,
+    }: Basm<S2>,
+    src: S1,
+) -> Basm<S1> {
+    Basm {
+        src,
+        si,
+        labels,
+        lines,
+        sections,
+    }
+}
+
+impl<S: Default> Basm<S> {
+    fn new(src: S) -> Self {
         Self {
             src,
             ..Default::default()

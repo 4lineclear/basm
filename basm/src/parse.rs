@@ -2,7 +2,7 @@ use crate::{
     lex::{
         Advance, BaseLexer,
         Lexeme::{self, *},
-        Lexer, Span,
+        Lexer, RecordedLexer, Span,
     },
     Basm, Line, Section, SectionKind, Value,
 };
@@ -14,24 +14,45 @@ mod test;
 
 // TODO: replace breaks with error propagation
 
-pub struct Parser<'a, L> {
+#[derive(Debug)]
+pub struct Parser<L, S> {
     lexer: L,
-    basm: Basm<'a>,
+    basm: Basm<S>,
     errors: Vec<ParseError>,
 }
 
-impl<'a> Parser<'a, BaseLexer<'a>> {
-    pub fn new(src: &'a str) -> Self {
+impl<'a> Parser<BaseLexer<'a>, &'a str> {
+    pub fn base(src: &'a str) -> Self {
         Self {
             lexer: BaseLexer::new(src),
             basm: Basm::new(src),
             errors: Vec::new(),
         }
     }
+    pub fn parse(mut self) -> (Basm<&'a str>, Vec<ParseError>) {
+        self.parse_inner();
+        (self.basm, self.errors)
+    }
+}
+impl<'a> Parser<RecordedLexer<'a>, &'a str> {
+    pub fn recorded(src: &'a str) -> Self {
+        Self {
+            lexer: RecordedLexer::new(src),
+            basm: Basm::new(src),
+            errors: Vec::new(),
+        }
+    }
+    pub fn parse(mut self) -> (Basm<&'a str>, Vec<ParseError>, Vec<Advance>) {
+        self.parse_inner();
+        (self.basm, self.errors, self.lexer.parts().1)
+    }
 }
 
-impl<'a, L: Lexer> Parser<'a, L> {
-    pub fn parse(mut self) -> (Basm<'a>, Vec<ParseError>) {
+impl<'a, L: Lexer> Parser<L, &'a str> {
+    pub fn lexer(&self) -> &L {
+        &self.lexer
+    }
+    fn parse_inner(&mut self) {
         loop {
             let ad = self.lexer.advance();
             let e = match ad.lex {
@@ -51,7 +72,6 @@ impl<'a, L: Lexer> Parser<'a, L> {
                 self.errors.push(e);
             }
         }
-        (self.basm, self.errors)
     }
 
     fn parse_line(&mut self, first: Advance) -> ParseResult<()> {
@@ -61,10 +81,11 @@ impl<'a, L: Lexer> Parser<'a, L> {
             self.clear_line()?;
             let address = self.current_address();
             let key = self.slice(first.span);
-            if self.basm.labels.contains_key(key) {
+            let k = self.basm.si.get_or_intern(key);
+            if self.basm.labels.contains_key(&k) {
                 return Err(ParseErrorKind::DuplicateLabel(key.to_owned(), address).full(first));
             } else {
-                self.basm.labels.insert(key, address);
+                self.basm.labels.insert(k, address);
             }
             return Ok(());
         }
@@ -95,7 +116,7 @@ impl<'a, L: Lexer> Parser<'a, L> {
         let ad = self.non_ws();
         match ad.lex {
             Ident => (),
-            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(ad.line).full(ad)),
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(ad)),
             _ => {
                 return Err(self.expected(ad, "Ident"));
             }
@@ -156,7 +177,7 @@ impl<'a, L: Lexer> Parser<'a, L> {
             ))),
             Digit(base) => {
                 let n = u32::from_str_radix(self.slice(ad.span), base as u32)
-                    .map_err(|e| ParseErrorKind::ParseIntError(ad.span, e).full(ad))?;
+                    .map_err(|e| ParseErrorKind::ParseIntError(e).full(ad))?;
                 Ok(Some(Value::Digit(base, n)))
             }
             OpenBracket => Ok(Some(Value::Deref(self.after_bracket()?))),
@@ -204,7 +225,7 @@ impl<'a, L: Lexer> Parser<'a, L> {
 
     fn expected(&mut self, ad: Advance, expected: impl Into<String>) -> ParseError {
         self.kill_line();
-        ParseErrorKind::Expected(ad, expected.into()).full(ad)
+        ParseErrorKind::Expected(expected.into()).full(ad)
     }
 
     fn slice(&self, span: impl Into<Span>) -> &'a str {
@@ -215,7 +236,7 @@ impl<'a, L: Lexer> Parser<'a, L> {
         let ident = self.non_ws();
         match ident.lex {
             Ident => (),
-            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(ident.line).full(ident)),
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(ident)),
             _ => {
                 self.kill_line();
                 return Err(self.expected(ident, "Ident"));
@@ -224,7 +245,7 @@ impl<'a, L: Lexer> Parser<'a, L> {
         let close = self.non_ws();
         match close.lex {
             CloseBracket => (),
-            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd(close.line).full(close)),
+            Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(close)),
             _ => {
                 self.kill_line();
                 return Err(self.expected(close, "CloseBracket"));
@@ -234,69 +255,72 @@ impl<'a, L: Lexer> Parser<'a, L> {
     }
 }
 
+// TODO: improve errors.
+// make them usable in the lsp
+
 pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
 pub struct ParseError {
-    line: u32,
-    offset: u32,
+    ad: Advance,
     kind: ParseErrorKind,
+}
+
+impl ParseError {
+    pub fn advance(&self) -> Advance {
+        self.ad
+    }
+    pub fn line(&self) -> u32 {
+        self.ad.line
+    }
+
+    pub fn offset(&self) -> u32 {
+        self.ad.offset
+    }
+
+    pub fn kind(&self) -> &ParseErrorKind {
+        &self.kind
+    }
 }
 
 #[derive(Debug)]
 pub enum ParseErrorKind {
-    Expected(Advance, String),
-    // NoOpValues,
-    ParseIntError(Span, std::num::ParseIntError),
-    // MissingComma(Span),
-    // InvalidValue(Value),
-    // Terminated,
-    InputEnd(u32),
+    Expected(String),
+    ParseIntError(std::num::ParseIntError),
+    InputEnd,
     DuplicateLabel(String, u16),
 }
 
 impl ParseErrorKind {
     fn full(self, ad: Advance) -> ParseError {
-        ParseError {
-            line: ad.line,
-            offset: ad.offset,
-            kind: self,
-        }
+        ParseError { ad, kind: self }
     }
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ParseErrorKind::*;
-        let line = self.line;
-        let offset = self.offset;
+        let ad = self.ad;
+        let offset = ad.offset;
+        let line = ad.line;
+        let span = ad.span;
+        let from = span.from - offset;
+        let to = span.to - offset;
         match &self.kind {
-            Expected(
-                Advance {
-                    lex,
-                    line,
-                    offset,
-                    span,
-                },
-                expected,
-            ) => writeln!(
-                f,
-                "unexpected input found at {line}:{},{}. \
-                expected {expected} but found {lex:?}",
-                span.from - offset,
-                span.to - offset,
-            ),
-            InputEnd(line) => writeln!(f, "unexpected input end on line {line}"),
-            DuplicateLabel(name, address) => {
-                writeln!(f, "duplicate label '{name}' found at address {address}")
+            Expected(e) => {
+                writeln!(
+                    f,
+                    "unexpected input found at: {line}:{from}:{to}. expected {e} but got {:?}",
+                    ad.lex
+                )
             }
-            ParseIntError(span, parse_int_error) => writeln!(
-                f,
-                "unable to parse integer at {line}:{},{}. error: {parse_int_error}",
-                span.from - offset,
-                span.to - offset,
-            ),
+            ParseIntError(_) => {
+                writeln!(f, "unable to parse number at: {line}:{from}:{to}")
+            }
+            InputEnd => writeln!(f, "input ended early at: {line}:{from}:{to}"),
+            DuplicateLabel(_, _) => writeln!(f, "duplicate label found at: {line}:{from}:{to}"),
         }
+        // writeln!(f, "{:?}", self.ad)
     }
 }
 

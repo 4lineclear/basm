@@ -4,11 +4,15 @@ use super::Parser;
 
 fn check(src: &str, expect: Expect) {
     use std::fmt::Write;
-    let (basm, errors) = Parser::new(src).parse();
+    let (basm, errors) = Parser::base(src).parse();
     let mut output = std::string::String::with_capacity(src.len());
     let mut section = 0;
     let mut label = 0;
-    let mut labels = basm.labels.into_iter().collect::<Vec<_>>();
+    let mut labels = basm
+        .labels
+        .into_iter()
+        .map(|(k, ad)| (basm.si.resolve(k).unwrap(), ad))
+        .collect::<Vec<_>>();
     labels.sort_by_key(|&(s, ad)| (ad, s));
     output.push_str("output:\n");
     (0..basm.lines.len())
@@ -18,7 +22,7 @@ fn check(src: &str, expect: Expect) {
                 section += 1
             }
             if label < labels.len() && labels[label].1 as usize == i {
-                writeln!(output, "{:?}", labels[label])?;
+                writeln!(output, "{}: {}", labels[label].0, labels[label].1)?;
                 label += 1
             }
             writeln!(output, "{:?}", basm.lines[i])
@@ -226,7 +230,7 @@ fn hello_world() {
             Section { kind: Text, address: 2 }
             Instruction { ins: (100, 106), values: [Ident((110, 116))] }
             NoOp
-            ("_start", 4)
+            _start: 4
             Instruction { ins: (131, 134), values: [Ident((141, 144)), Digit(Decimal, 1)] }
             Instruction { ins: (187, 190), values: [Ident((197, 200)), Digit(Decimal, 1)] }
             Instruction { ins: (245, 248), values: [Ident((255, 258)), Ident((260, 267))] }
@@ -252,7 +256,7 @@ fn print_any() {
             Section { kind: Text, address: 4 }
             Instruction { ins: (165, 171), values: [Ident((172, 178))] }
             NoOp
-            ("_start", 6)
+            _start: 6
             Instruction { ins: (192, 195), values: [Ident((196, 199)), Ident((201, 212))] }
             Instruction { ins: (217, 221), values: [Ident((222, 227))] }
             NoOp
@@ -265,10 +269,10 @@ fn print_any() {
             Instruction { ins: (310, 313), values: [Ident((314, 317)), Digit(Decimal, 60)] }
             Instruction { ins: (326, 329), values: [Ident((330, 333)), Digit(Decimal, 0)] }
             Instruction { ins: (341, 348), values: [] }
-            ("print", 18)
+            print: 18
             Instruction { ins: (360, 364), values: [Ident((365, 368))] }
             Instruction { ins: (373, 376), values: [Ident((377, 380)), Digit(Decimal, 0)] }
-            ("print_loop", 20)
+            print_loop: 20
             Instruction { ins: (400, 403), values: [Ident((404, 407))] }
             Instruction { ins: (412, 415), values: [Ident((416, 419))] }
             Instruction { ins: (424, 427), values: [Ident((428, 430)), Deref((433, 436))] }
@@ -302,7 +306,7 @@ fn print_int() {
             Section { kind: Text, address: 5 }
             Instruction { ins: (238, 244), values: [Ident((245, 251))] }
             NoOp
-            ("_start", 7)
+            _start: 7
             Instruction { ins: (265, 268), values: [Ident((269, 272)), Digit(Decimal, 1337)] }
             Instruction { ins: (283, 287), values: [Ident((288, 293))] }
             NoOp
@@ -310,13 +314,13 @@ fn print_int() {
             Instruction { ins: (315, 318), values: [Ident((319, 322)), Digit(Decimal, 0)] }
             Instruction { ins: (330, 337), values: [] }
             NoOp
-            ("print", 14)
+            print: 14
             Instruction { ins: (350, 353), values: [Ident((354, 357)), Ident((359, 371))] }
             Instruction { ins: (376, 379), values: [Ident((380, 383)), Digit(Decimal, 10)] }
             Instruction { ins: (392, 395), values: [Deref((397, 400)), Ident((403, 406))] }
             Instruction { ins: (411, 414), values: [Ident((415, 418))] }
             Instruction { ins: (423, 426), values: [Deref((428, 444)), Ident((447, 450))] }
-            ("int_buffer", 19)
+            int_buffer: 19
             Instruction { ins: (467, 470), values: [Ident((471, 474)), Digit(Decimal, 0)] }
             Instruction { ins: (482, 485), values: [Ident((486, 489)), Digit(Decimal, 10)] }
             Instruction { ins: (498, 501), values: [Ident((502, 505))] }
@@ -331,7 +335,7 @@ fn print_int() {
             Instruction { ins: (679, 682), values: [Ident((683, 686))] }
             Instruction { ins: (691, 694), values: [Ident((695, 698)), Digit(Decimal, 0)] }
             Instruction { ins: (706, 709), values: [Ident((710, 720))] }
-            ("print_loop", 33)
+            print_loop: 33
             Instruction { ins: (737, 740), values: [Ident((741, 744)), Deref((747, 763))] }
             NoOp
             Instruction { ins: (770, 773), values: [Ident((774, 777)), Digit(Decimal, 1)] }
