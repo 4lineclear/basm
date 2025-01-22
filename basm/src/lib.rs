@@ -8,7 +8,7 @@ pub type Address = u16;
 #[derive(Debug, Default)]
 pub struct Basm<'a> {
     pub src: &'a str,
-    pub labels: AHashMap<Span, Address>,
+    pub labels: AHashMap<&'a str, Address>,
     pub lines: Vec<Line>,
     pub sections: Vec<Section>,
 }
@@ -39,6 +39,7 @@ pub enum SectionKind {
 pub enum Line {
     NoOp,
     Instruction {
+        ins: Span,
         values: Vec<Value>,
     },
     Variable {
@@ -50,6 +51,7 @@ pub enum Line {
 
 #[derive(Debug)]
 pub enum Value {
+    Deref(Span),
     Ident(Span),
     String(String),
     Digit(DigitBase, u32),

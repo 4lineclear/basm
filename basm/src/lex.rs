@@ -12,7 +12,7 @@ mod test;
 pub enum Lexeme {
     Whitespace,
     Ident,
-    String,
+    Str,
     Comma,
     Colon,
     OpenBracket,
@@ -122,30 +122,35 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn peek(&mut self) -> Advance {
-        self.prev.unwrap_or_else(|| self.advance())
+    pub fn pop_peek(&mut self) -> Option<Advance> {
+        self.prev.take()
     }
 
-    fn store(&mut self, ad: Advance) -> Advance {
-        self.prev = Some(ad);
-        ad
+    pub fn peek(&mut self) -> Advance {
+        if let Some(prev) = self.prev {
+            prev
+        } else {
+            let next = self.advance();
+            self.prev = Some(next);
+            next
+        }
     }
 
     // TODO: return struct instead of tuple
     pub fn advance(&mut self) -> Advance {
-        // if let Some(prev) = self.prev.take() {
-        //     return prev;
-        // }
+        if let Some(prev) = self.prev.take() {
+            return prev;
+        }
         let line = self.line;
         let offset = self.line_start;
         let start = self.pos;
         let Some(first_char) = self.bump() else {
-            return self.store(Advance {
+            return Advance {
                 lex: Lexeme::Eof,
-                line: self.line,
+                line,
                 offset,
                 span: start.into(),
-            });
+            };
         };
         let lex = match first_char {
             ';' => {
@@ -174,12 +179,12 @@ impl<'a> Lexer<'a> {
             self.line_start = self.pos();
         }
         let span = (start, self.pos()).into();
-        return self.store(Advance {
+        Advance {
             lex,
             line,
             offset,
             span,
-        });
+        }
     }
 
     fn whitespace(&mut self) -> Lexeme {
@@ -202,7 +207,7 @@ impl<'a> Lexer<'a> {
                 _ => (),
             }
         }
-        Lexeme::String
+        Lexeme::Str
     }
 
     // TODO: eventually add floats back in

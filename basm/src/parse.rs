@@ -1,6 +1,6 @@
 use crate::{
     lex::{
-        Advance, DigitBase,
+        Advance,
         Lexeme::{self, *},
         Lexer, Span,
     },
@@ -10,13 +10,15 @@ use crate::{
 #[cfg(test)]
 mod test;
 
+// TODO: improve spans
+
+// TODO: replace breaks with error propagation
+
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     basm: Basm<'a>,
     errors: Vec<ParseError>,
 }
-
-const VALUES: [Lexeme; 5] = [Ident, String, Colon, OpenBracket, Digit(DigitBase::Decimal)];
 
 impl<'a> Parser<'a> {
     pub fn new(src: &'a str) -> Self {
@@ -28,161 +30,211 @@ impl<'a> Parser<'a> {
     }
     pub fn parse(mut self) -> (Basm<'a>, Vec<ParseError>) {
         loop {
-            match self.parse_line() {
-                Ok(true) => (),
-                Ok(false) => break,
-                Err(e) => self.errors.push(e),
-            }
-            while let Err(e) = self.eat_rest() {
-                self.errors.push(e);
+            let ad = self.lexer.advance();
+            match ad.lex {
+                Whitespace => (),
+                Ident => match self.slice(ad.span) {
+                    "section" => self.section(),
+                    _ => self.post_ident(ad),
+                },
+                Eol(_) => {
+                    self.basm.lines.push(Line::NoOp);
+                }
+                Eof => break,
+                _ => {
+                    self.expected(ad, "Ident | Eol | Eof");
+                    self.kill_line();
+                }
             }
         }
         (self.basm, self.errors)
     }
 
-    fn parse_line(&mut self) -> ParseResult<bool> {
-        loop {
-            let ad = self.lexer.advance();
-            match ad.lex {
-                Whitespace => (),
-                Ident => {
-                    match self.slice(ad.span) {
-                        "section" => self.section(ad)?,
-                        _ => self.var_or_ins(ad)?,
+    fn post_ident(&mut self, ad: Advance) {
+        let ad2 = self.non_ws();
+        match ad2.lex {
+            Ident => {
+                let Some((values, ins)) = self.values(ad2.span) else {
+                    return;
+                };
+                self.basm.lines.push(if ins || values.is_empty() {
+                    Line::Instruction {
+                        ins: ad.span,
+                        values,
                     }
-                    break Ok(true);
-                }
-                Eol(_) => {
-                    self.basm.lines.push(Line::NoOp);
-                    break Ok(true);
-                }
-                Eof => {
-                    self.basm.lines.push(Line::NoOp);
-                    return Ok(false);
-                }
-                _ => return self.handle_etc(ad, [Ident]).full(ad),
-            }
-        }
-    }
-
-    fn section(&mut self, ad: Advance) -> ParseResult<()> {
-        match self.value()? {
-            Some(Value::Ident(span)) => {
-                let kind = match self.slice(span) {
-                    "bss" => SectionKind::Bss,
-                    "data" => SectionKind::Data,
-                    "text" => SectionKind::Text,
-                    _ => return ParseErrorKind::InvalidValue(Value::Ident(span)).full(ad),
-                };
-                let address = self.current_address();
-                self.basm.sections.push(Section { kind, address });
-                Ok(())
-            }
-            Some(val) => ParseErrorKind::InvalidValue(val).full(ad),
-            None => ParseErrorKind::Terminated.full(ad),
-        }
-    }
-
-    fn var_or_ins(&mut self, ad: Advance) -> ParseResult<()> {
-        let Some(second) = self.value()? else {
-            self.basm.lines.push(Line::Instruction {
-                values: vec![Value::Ident(ad.span)],
-            });
-            return Ok(());
-        };
-        let (is_var, values) = self.values()?;
-        if !is_var {
-            self.basm.lines.push(Line::Instruction { values });
-            return Ok(());
-        }
-        let Value::Ident(r#type) = second else {
-            return ParseErrorKind::InvalidValue(second).full(ad);
-        };
-        self.basm.lines.push(Line::Variable {
-            name: ad.span,
-            r#type,
-            values,
-        });
-        Ok(())
-    }
-
-    fn values(&mut self) -> ParseResult<(bool, Vec<Value>)> {
-        let mut values = Vec::new();
-        let mut first_comma = 0;
-        loop {
-            let ad = self.lexer.peek();
-            if first_comma == 0 {
-                first_comma = if Comma == ad.lex {
-                    self.lexer.advance();
-                    1
                 } else {
-                    -1
-                };
-            } else if Comma != ad.lex {
-                self.lexer.advance();
-                return ParseErrorKind::MissingComma(ad.span).full(ad);
-            } else {
-                self.lexer.advance();
+                    Line::Variable {
+                        name: ad.span,
+                        r#type: ad2.span,
+                        values,
+                    }
+                });
             }
-            let Some(value) = self.value()? else {
-                break Ok((first_comma > 0, values));
-            };
-            values.push(value);
+            Eol(_) | Eof => self.basm.lines.push(Line::Instruction {
+                ins: ad.span,
+                values: vec![],
+            }),
+            Colon if self.clear_line() => {
+                let address = self.current_address();
+                let key = self.slice(ad.span);
+                if self.basm.labels.contains_key(key) {
+                    self.errors
+                        .push(ParseErrorKind::DuplicateLabel(key.to_owned(), address).full(ad));
+                } else {
+                    self.basm.labels.insert(key, address);
+                }
+            }
+            Colon => (),
+            _ => {
+                self.expected(ad2, "Ident | Colon");
+                self.kill_line();
+            }
         }
     }
 
-    fn value(&mut self) -> ParseResult<Option<Value>> {
-        loop {
-            let ad = self.lexer.advance();
-            let value = match ad.lex {
-                Whitespace => continue,
-                Ident => Value::Ident(ad.span),
-                String => Value::String(self.slice((ad.span.from + 1, ad.span.to - 1)).to_owned()),
-                OpenBracket => todo!("deref not supported yet"),
-                Digit(digit) => match u32::from_str_radix(self.slice(ad.span), digit as u32) {
-                    Ok(n) => Value::Digit(digit, n),
-                    Err(e) => return ParseErrorKind::ParseIntError(ad.span, e).full(ad),
-                },
-                Eof | Eol(_) => break Ok(None),
-                _ => return self.handle_etc(ad, VALUES).full(ad),
-            };
-            break Ok(Some(value));
+    fn section(&mut self) {
+        let ad = self.non_ws();
+        match ad.lex {
+            Ident => (),
+            Eol(_) | Eof => {
+                self.errors.push(ParseErrorKind::InputEnd(ad.line).full(ad));
+                return;
+            }
+            _ => {
+                self.expected(ad, "Ident");
+                self.kill_line();
+                return;
+            }
+        }
+        let kind = match self.slice(ad.span) {
+            "bss" => SectionKind::Bss,
+            "data" => SectionKind::Data,
+            "text" => SectionKind::Text,
+            _ => {
+                self.expected(ad, "'bss' | 'data' | 'text'");
+                self.kill_line();
+                return;
+            }
+        };
+        if self.clear_line() {
+            let address = self.current_address();
+            self.basm.sections.push(Section { kind, address });
         }
     }
 
-    fn eat_rest(&mut self) -> ParseResult<()> {
+    fn values(&mut self, id2: Span) -> Option<(Vec<Value>, bool)> {
+        let mut values = vec![];
+
+        let peek = self.lexer.peek();
+        let ins = Lexeme::Comma == peek.lex;
+        if ins {
+            values.push(Value::Ident(id2));
+            self.lexer.pop_peek();
+        }
         loop {
-            let ad = self.lexer.advance();
+            let ad = self.non_ws();
             match ad.lex {
-                Whitespace => (),
-                Eol(_) | Eof => break Ok(()),
+                Eol(_) | Eof => break Some((values, ins)),
+                Ident => values.push(Value::Ident(ad.span)),
+                Str => values.push(Value::String(
+                    self.slice((ad.span.from + 1, ad.span.to - 1)).to_owned(),
+                )),
+                Digit(base) => match u32::from_str_radix(self.slice(ad.span), base as u32) {
+                    Ok(n) => values.push(Value::Digit(base, n)),
+                    Err(e) => self
+                        .errors
+                        .push(ParseErrorKind::ParseIntError(ad.span, e).full(ad)),
+                },
+                OpenBracket => values.push(Value::Deref(self.after_bracket()?)),
                 _ => {
-                    break self
-                        .handle_etc(ad, [Whitespace, Eol(false), Eol(true), Eof])
-                        .full(ad)
+                    self.expected(ad, "Ident | Str | Colon | OpenBracket | Digit");
+                    self.kill_line();
+                    break None;
+                }
+            }
+            let ad = self.non_ws();
+            match ad.lex {
+                Comma => (),
+                Eol(_) | Eof => break Some((values, ins)),
+                _ => {
+                    let expected = if ins { "Comma" } else { "Comma | Ident | Str" };
+                    self.expected(ad, expected);
+                    self.kill_line();
+                    break None;
                 }
             }
         }
     }
 
-    #[must_use]
-    fn handle_etc(&mut self, ad: Advance, expected: impl Into<Box<[Lexeme]>>) -> ParseErrorKind {
-        match ad.lex {
-            Other => ParseErrorKind::OtherInput(ad.span),
-            _ => ParseErrorKind::Expected(ad, expected.into()),
+    fn non_ws(&mut self) -> Advance {
+        while let Lexeme::Whitespace = self.lexer.peek().lex {
+            self.lexer.pop_peek();
         }
+        self.lexer.advance()
+    }
+
+    fn clear_line(&mut self) -> bool {
+        let ad = self.non_ws();
+        if let Eol(_) | Eof = ad.lex {
+            true
+        } else {
+            self.expected(ad, "Whitespace");
+            self.kill_line();
+            false
+        }
+    }
+
+    fn kill_line(&mut self) {
+        while !matches!(self.lexer.advance().lex, Eol(_) | Eof) {}
     }
 
     fn current_address(&mut self) -> u16 {
         u16::try_from(self.basm.lines.len()).expect("failed to convert line address to u16")
     }
 
+    fn expected(&mut self, ad: Advance, expected: impl Into<String>) {
+        self.errors
+            .push(ParseErrorKind::Expected(ad, expected.into()).full(ad));
+    }
     fn slice(&self, span: impl Into<Span>) -> &'a str {
         span.into().slice(self.basm.src)
     }
+
+    fn after_bracket(&mut self) -> Option<Span> {
+        let ident = self.non_ws();
+        match ident.lex {
+            Ident => (),
+            Eol(_) | Eof => {
+                self.errors
+                    .push(ParseErrorKind::InputEnd(ident.line).full(ident));
+                return None;
+            }
+            _ => {
+                self.expected(ident, "Ident");
+                self.kill_line();
+                return None;
+            }
+        }
+        let close = self.non_ws();
+        match close.lex {
+            CloseBracket => (),
+            Eol(_) | Eof => {
+                self.errors
+                    .push(ParseErrorKind::InputEnd(close.line).full(close));
+                return None;
+            }
+            _ => {
+                self.expected(close, "CloseBracket");
+                self.kill_line();
+                return None;
+            }
+        }
+        // values.push(Value::Deref(ident.span));
+        Some(ident.span)
+    }
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -193,22 +245,23 @@ pub struct ParseError {
 
 #[derive(Debug)]
 pub enum ParseErrorKind {
-    Expected(Advance, Box<[Lexeme]>),
-    OtherInput(Span),
-    NoOpValues,
+    Expected(Advance, String),
+    // NoOpValues,
     ParseIntError(Span, std::num::ParseIntError),
-    MissingComma(Span),
-    InvalidValue(Value),
-    Terminated,
+    // MissingComma(Span),
+    // InvalidValue(Value),
+    // Terminated,
+    InputEnd(u32),
+    DuplicateLabel(String, u16),
 }
 
 impl ParseErrorKind {
-    fn full<T>(self, ad: Advance) -> ParseResult<T> {
-        Err(ParseError {
+    fn full(self, ad: Advance) -> ParseError {
+        ParseError {
             line: ad.line,
             offset: ad.offset,
             kind: self,
-        })
+        }
     }
 }
 
@@ -229,34 +282,20 @@ impl std::fmt::Display for ParseError {
             ) => writeln!(
                 f,
                 "unexpected input found at {line}:{},{}. \
-                expected {expected:?} but found {lex:?}",
+                expected {expected} but found {lex:?}",
                 span.from - offset,
                 span.to - offset,
             ),
-            OtherInput(span) => writeln!(
-                f,
-                "unknown input found at {line}:{},{}",
-                span.from - offset,
-                span.to - offset,
-            ),
-            NoOpValues => writeln!(f, "line {line} has values but no instruction"),
+            InputEnd(line) => writeln!(f, "unexpected input end on line {line}"),
+            DuplicateLabel(name, address) => {
+                writeln!(f, "duplicate label '{name}' found at address {address}")
+            }
             ParseIntError(span, parse_int_error) => writeln!(
                 f,
-                "parse int error found at {line}:{},{}. \
-                error: {parse_int_error}",
+                "unable to parse integer at {line}:{},{}. error: {parse_int_error}",
                 span.from - offset,
                 span.to - offset,
             ),
-            MissingComma(span) => writeln!(
-                f,
-                "missing comma at {line}:{},{}",
-                span.from - offset,
-                span.to - offset,
-            ),
-            InvalidValue(value) => {
-                writeln!(f, "variable at line {line} had invalid type: {value:?}",)
-            }
-            Terminated => writeln!(f, "unexpected termination on line {line}",),
         }
     }
 }

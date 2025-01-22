@@ -253,7 +253,7 @@ digit reb 100",
             	0:(3, 4)=Whitespace
             	0:(4, 6)=Ident
             	0:(6, 7)=Whitespace
-            	0:(7, 22)=String
+            	0:(7, 22)=Str
             	0:(22, 23)=Comma
             	0:(23, 24)=Whitespace
             	0:(24, 29)=Digit(Decimal)
@@ -278,7 +278,7 @@ fn variable_err() {
             	0:(3, 4)=Whitespace
             	0:(4, 6)=Ident
             	0:(6, 7)=Whitespace
-            	0:(7, 22)=String
+            	0:(7, 22)=Str
             	0:(22, 23)=Whitespace
             	0:(23, 28)=Digit(Decimal)
             	0:(28, 29)=Whitespace
@@ -300,7 +300,7 @@ fn hello_world() {
             	15:(26, 27)=Whitespace
             	15:(27, 29)=Ident
             	15:(29, 30)=Whitespace
-            	15:(30, 44)=String
+            	15:(30, 44)=Str
             	15:(44, 45)=Comma
             	15:(45, 46)=Whitespace
             	15:(46, 48)=Digit(Decimal)
@@ -400,7 +400,7 @@ fn print_any() {
             	13:(28, 29)=Whitespace
             	13:(29, 31)=Ident
             	13:(31, 32)=Whitespace
-            	13:(32, 47)=String
+            	13:(32, 47)=Str
             	13:(47, 48)=Comma
             	13:(48, 49)=Whitespace
             	13:(49, 51)=Digit(Decimal)
@@ -413,7 +413,7 @@ fn print_any() {
             	55:(67, 68)=Whitespace
             	55:(68, 70)=Ident
             	55:(70, 71)=Whitespace
-            	55:(71, 82)=String
+            	55:(71, 82)=Str
             	55:(82, 83)=Comma
             	55:(83, 84)=Whitespace
             	55:(84, 86)=Digit(Decimal)
@@ -426,7 +426,7 @@ fn print_any() {
             	90:(103, 104)=Whitespace
             	90:(104, 106)=Ident
             	90:(106, 107)=Whitespace
-            	90:(107, 139)=String
+            	90:(107, 139)=Str
             	90:(139, 140)=Comma
             	90:(140, 141)=Whitespace
             	90:(141, 143)=Digit(Decimal)
@@ -760,7 +760,7 @@ section section: : :
             	28:(31, 32)=Whitespace
             	28:(32, 35)=Ident
             	28:(35, 36)=Whitespace
-            	28:(36, 41)=String
+            	28:(36, 41)=Str
             	28:(41, 42)=Comma
             	28:(42, 43)=Whitespace
             	28:(43, 45)=Digit(Decimal)
@@ -827,7 +827,7 @@ section section`~]]./\\
             	35:(38, 39)=Whitespace
             	35:(39, 42)=Ident
             	35:(42, 43)=Whitespace
-            	35:(43, 48)=String
+            	35:(43, 48)=Str
             	35:(48, 49)=Comma
             	35:(49, 50)=Whitespace
             	35:(50, 52)=Digit(Decimal)
