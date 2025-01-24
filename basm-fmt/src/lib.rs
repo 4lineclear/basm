@@ -1,14 +1,15 @@
-use std::usize;
+use std::{collections::HashSet, usize};
 
 use basm::{
     lex::{Advance, Lexeme, Span},
+    parse::ParseError,
     Basm, Line,
 };
 
 #[cfg(test)]
 mod test;
 
-// TODO: consider changing this to two advances
+// TODO: create vertical alignment
 
 #[derive(Debug, Default)]
 pub struct Edit {
@@ -64,6 +65,7 @@ struct Formatter<'a> {
     lex: &'a [Advance],
     fmt: &'a FmtContext,
     src: &'a str,
+    err: HashSet<u32>,
     out: Vec<Edit>,
 }
 
@@ -77,6 +79,9 @@ impl Formatter<'_> {
 
     fn fmt_line(&mut self, lex: &[Advance]) {
         if lex.len() < 2 {
+            return;
+        }
+        if self.err.contains(&lex[0].line) {
             return;
         }
         let first = lex[0];
@@ -99,19 +104,23 @@ impl Formatter<'_> {
             // no comment or comment on empty line
             if !comment || matches!(line, Line::NoOp) {
                 self.out.push(Edit::delete(slast));
-            } else if check_space(slast.span.slice(self.src).chars()) {
+            } else if check_space(slast.span.slice(self.src)) {
                 self.out.push(Edit::space(slast, 1));
             }
+        } else if comment && !matches!(line, Line::NoOp) {
+            let mut span = slast.span;
+            span.from = span.to;
+            self.out.push(Edit::space(Advance { span, ..slast }, 1));
         }
         if comment {
-            self.comment(eol);
+            self.in_comment(eol);
         }
     }
 
-    fn comment(&mut self, eol: Advance) {
+    fn in_comment(&mut self, eol: Advance) {
         let post_semi = Span::new(eol.span.from + 1, eol.span.to - 1);
         let src = post_semi.slice(self.src);
-        if check_space(src.chars()) {
+        if check_space(src) {
             let trim_start = src.trim_start();
             if trim_start.len() != 0 {
                 let mut span = post_semi;
@@ -171,7 +180,7 @@ impl Formatter<'_> {
         if ad.lex == Whitespace {
             if matches!(next, Comma | Colon | CloseBracket) || matches!(prev, OpenBracket) {
                 self.out.push(Edit::delete(ad));
-            } else if check_space(ad.span.slice(self.src).chars()) {
+            } else if check_space(ad.span.slice(self.src)) {
                 self.out.push(Edit::space(ad, 1));
             }
         } else if ad.lex == Comma && !matches!(next, Whitespace | Eol(_)) {
@@ -182,19 +191,29 @@ impl Formatter<'_> {
     }
 }
 
-fn check_space(mut ch: impl Iterator<Item = char>) -> bool {
-    let Some(' ') = ch.next() else {
+fn check_space(src: &str) -> bool {
+    let mut src = src.chars();
+    let Some(' ') = src.next() else {
         return true;
     };
-    ch.next().is_some_and(char::is_whitespace)
+    src.next().is_some_and(char::is_whitespace)
 }
 
-pub fn fmt<'a>(basm: &Basm, lex: &[Advance], src: &str, fmt: &FmtContext) -> Vec<Edit> {
+pub fn fmt<'a>(
+    basm: &Basm,
+    lex: &[Advance],
+    src: &str,
+    errors: &[ParseError],
+    fmt: &FmtContext,
+) -> Vec<Edit> {
+    let err: HashSet<u32> = errors.iter().map(|s| s.advance().line).collect();
+    println!("{errors:#?}");
     Formatter {
         basm,
         lex,
         fmt,
         src,
+        err,
         out: Vec::new(),
     }
     .fmt()

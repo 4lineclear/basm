@@ -18,9 +18,9 @@ fn display_edit(src: &str, edit: Edit) -> String {
 }
 
 fn check(src: &str, expect: Expect) {
-    let (basm, _, lex) = Parser::recorded(&src).parse();
+    let (basm, errors, lex) = Parser::recorded(&src).parse();
     expect.assert_eq(
-        &crate::fmt(&basm, &lex, src, &Default::default())
+        &crate::fmt(&basm, &lex, src, &errors, &Default::default())
             .into_iter()
             .map(|e| display_edit(src, e))
             .collect::<Vec<_>>()
@@ -51,54 +51,6 @@ fn empty_lines_ws() {
             0:(0, 7) = '  \t  \t ' -> ''
             1:(0, 3) = ' \t ' -> ''
             2:(0, 1) = ' ' -> ''"#]],
-    );
-}
-
-#[test]
-fn empty_lit_ws_start() {
-    check(
-        "
-123, 123
-    123, 123
-\t0b123, 123
-  \t  0x123 123
-",
-        expect![[r#"
-            2:(0, 4) = '    ' -> ''
-            3:(0, 1) = '\t' -> ''
-            4:(0, 5) = '  \t  ' -> ''"#]],
-    );
-}
-
-#[test]
-fn empty_lit_ws_end() {
-    check(
-        "
-123, 123            
-0b123, 123  \t\t\t\t
-0x123 123               \t
-",
-        expect![[r#"
-            1:(8, 20) = '            ' -> ''
-            2:(10, 16) = '  \t\t\t\t' -> ''
-            3:(9, 25) = '               \t' -> ''"#]],
-    );
-}
-
-#[test]
-fn empty_lit_ws_both() {
-    check(
-        "
-123, 123            
-        0b123, 123  \t\t\t\t
-\t\t\t\t0x123 123               \t
-",
-        expect![[r#"
-            1:(8, 20) = '            ' -> ''
-            2:(0, 8) = '        ' -> ''
-            2:(18, 24) = '  \t\t\t\t' -> ''
-            3:(0, 4) = '\t\t\t\t' -> ''
-            3:(13, 29) = '               \t' -> ''"#]],
     );
 }
 
@@ -202,6 +154,7 @@ fn ins_comment() {
             3:(17, 21) = '\t   ' -> ' '
             4:(15, 20) = '     ' -> ' '
             4:(21, 25) = '\t   ' -> ' '
+            5:(15, 15) = '' -> ' '
             5:(16, 20) = '\t   ' -> ' '"#]],
     );
 }

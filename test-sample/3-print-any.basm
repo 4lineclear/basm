@@ -7,7 +7,7 @@ section text
     global _start ;
 
 _start:
-    mov rax, hello_world ; a
+    mov rax, hello_world
     call print
 
     mov rax, whats_up

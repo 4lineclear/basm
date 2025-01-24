@@ -72,18 +72,18 @@ impl Backend {
 #[allow(unused)]
 #[derive(Debug)]
 pub struct Document {
-    source: Arc<str>,
+    src: Arc<str>,
     basm: Basm,
     lex: Vec<Advance>,
     errors: Vec<ParseError>,
 }
 
 impl Document {
-    fn new(source: String) -> Self {
-        let source = Arc::<str>::from(source);
-        let (basm, errors, lex) = Parser::recorded(&source).parse();
+    fn new(src: String) -> Self {
+        let src = Arc::<str>::from(src);
+        let (basm, errors, lex) = Parser::recorded(&src).parse();
         Self {
-            source,
+            src,
             basm,
             lex,
             errors,
@@ -109,7 +109,8 @@ impl Document {
         let fmt = basm_fmt::fmt(
             &self.basm,
             &self.lex,
-            &self.source,
+            &self.src,
+            &self.errors,
             &FmtContext {
                 tab_size: opts.tab_size,
             },

@@ -289,10 +289,12 @@ impl ParseErrorKind {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ParseErrorKind::*;
-        let ad = self.ad;
-        let offset = ad.offset;
-        let line = ad.line;
-        let span = ad.span;
+        let Advance {
+            lex,
+            line,
+            offset,
+            span,
+        } = self.ad;
         let from = span.from - offset;
         let to = span.to - offset;
         match &self.kind {
@@ -300,7 +302,7 @@ impl std::fmt::Display for ParseError {
                 writeln!(
                     f,
                     "unexpected input found at: {line}:{from}:{to}. expected {e} but got {:?}",
-                    ad.lex
+                    lex
                 )
             }
             ParseIntError(_) => {
@@ -309,7 +311,6 @@ impl std::fmt::Display for ParseError {
             InputEnd => writeln!(f, "input ended early at: {line}:{from}:{to}"),
             DuplicateLabel(_, _) => writeln!(f, "duplicate label found at: {line}:{from}:{to}"),
         }
-        // writeln!(f, "{:?}", self.ad)
     }
 }
 

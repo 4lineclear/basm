@@ -177,7 +177,7 @@ impl super::Document {
                 li = 0;
             }
             let (kind, modi) = match ad.lex {
-                Ident if is_keyword(ad.span.slice(&self.source)) => (TokenKind::Keyword, 0),
+                Ident if is_keyword(ad.span.slice(&self.src)) => (TokenKind::Keyword, 0),
                 // TODO: check if line at ad.line has any errors before indexing
                 Ident => match (li, &self.basm.lines[ad.line as usize]) {
                     (0, _) => (TokenKind::Function, 0),
