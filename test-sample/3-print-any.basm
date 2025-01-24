@@ -4,10 +4,10 @@ section data
     long_text db "this is a longer line of text.", 10, 0
 
 section text
-    global _start
+    global _start ;
 
 _start:
-    mov rax, hello_world
+    mov rax, hello_world ; a
     call print
 
     mov rax, whats_up

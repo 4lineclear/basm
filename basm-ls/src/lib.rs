@@ -3,7 +3,7 @@ use std::sync::Arc;
 use basm::{
     lex::Advance,
     parse::{ParseError, Parser},
-    transfer_basm, Basm,
+    Basm,
 };
 use basm_fmt::FmtContext;
 use dashmap::DashMap;
@@ -37,7 +37,10 @@ pub struct Backend {
     pub forms: DashMap<Url, Document>,
 }
 
-fn line_range(line: u32, from: u32, to: u32) -> Range {
+fn line_range(ad: Advance) -> Range {
+    let line = ad.line;
+    let from = ad.span.from - ad.offset;
+    let to = ad.span.to - ad.offset;
     Range {
         start: Position {
             line,
@@ -70,7 +73,7 @@ impl Backend {
 #[derive(Debug)]
 pub struct Document {
     source: Arc<str>,
-    basm: Basm<Arc<str>>,
+    basm: Basm,
     lex: Vec<Advance>,
     errors: Vec<ParseError>,
 }
@@ -79,7 +82,6 @@ impl Document {
     fn new(source: String) -> Self {
         let source = Arc::<str>::from(source);
         let (basm, errors, lex) = Parser::recorded(&source).parse();
-        let basm = transfer_basm(basm, source.clone());
         Self {
             source,
             basm,
@@ -87,34 +89,13 @@ impl Document {
             errors,
         }
     }
-    // #[allow(unused)]
-    // fn lit_iter(&self) -> impl Iterator<Item = (u32, &Span, &Literal)> {
-    //     self.parser.lines.iter().enumerate().flat_map(|(line, al)| {
-    //         al.line
-    //             .slice_lit(&self.parser.literals)
-    //             .iter()
-    //             .map(move |(s, le)| (line as u32, s, le))
-    //     })
-    // }
-    // fn err_iter(&self) -> impl Iterator<Item = (u32, &Span, &LineError)> {
-    //     self.lex.lines.iter().enumerate().flat_map(|(line, al)| {
-    //         al.line
-    //             .slice_err(&self.lex.errors)
-    //             .iter()
-    //             .map(move |(s, le)| (line as u32, s, le))
-    //     })
-    // }
     // TODO: add partial & delta semantic token changes
     fn diagnostics(&self) -> Vec<Diagnostic> {
-        // use basm::parse::ParseErrorKind::*;
         self.errors
             .iter()
             .map(|e| {
-                let ad = e.advance();
-                let line = ad.line;
-                let span = ad.span;
+                let range = line_range(e.advance());
                 let message = e.to_string();
-                let range = line_range(line, span.from - ad.offset, span.to - ad.offset);
                 Diagnostic {
                     range,
                     message,
@@ -122,37 +103,32 @@ impl Document {
                 }
             })
             .collect()
-        // fn diagnostic((line, span, err): (u32, &Span, &LineError)) -> Option<Diagnostic> {
-        //     let message = match err {
-        //         MissingComma => "comma missing".to_owned(),
-        //         // UnknownChar(ch) => format!("unexpected char: '{ch}'"),
-        //         UnclosedDeref => "Unclosed Deref".to_owned(),
-        //         EmptyDeref => "Empty Deref".to_owned(),
-        //         MuddyDeref => "Deref Has Other Items Within Range".to_owned(),
-        //         // Tab => return None,
-        //     };
-        //     Some(Diagnostic {
-        //         range: line_range(line, span.from, span.to),
-        //         message,
-        //         ..Default::default()
-        //     })
-        // }
-        //
-        // self.err_iter().filter_map(diagnostic).collect()
-        // Vec::new()
     }
     // TODO: add partial formatting
     fn formatting(&self, opts: FormattingOptions) -> Vec<TextEdit> {
-        let _fmt = FmtContext {
-            tab_size: opts.tab_size,
-        };
-        vec![]
-        // basm_fmt::fmt(&self.parser, &fmt)
-        //     .map(|e| TextEdit {
-        //         range: line_range(e.line, e.span.from, e.span.to),
-        //         new_text: e.change,
-        //     })
-        //     .collect()
+        let fmt = basm_fmt::fmt(
+            &self.basm,
+            &self.lex,
+            &self.source,
+            &FmtContext {
+                tab_size: opts.tab_size,
+            },
+        );
+        fmt.into_iter()
+            .map(|e| TextEdit {
+                range: Range {
+                    start: Position {
+                        line: e.line,
+                        character: e.span.from,
+                    },
+                    end: Position {
+                        line: e.line,
+                        character: e.span.to,
+                    },
+                },
+                new_text: e.text,
+            })
+            .collect()
     }
 }
 

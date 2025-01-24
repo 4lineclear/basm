@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 string-interner = "0.18"
 # thiserror = "2.0"
-ahash = { workspace = true }
+# ahash = { workspace = true }
 # unicode
 # unicode-ident = "1.0"
 # unicode-normalization = "0.1"

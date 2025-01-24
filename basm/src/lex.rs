@@ -5,6 +5,9 @@ use std::str::Chars;
 // TODO: create a testing system that is synchronized between
 // the lexing testing and the lsp's semantic token testing.
 
+// TODO: create testing that ensures that the number of lines in
+// lexing && parsing remain consistent
+
 #[cfg(test)]
 mod test;
 

@@ -1,7 +1,7 @@
 use std::ops::BitAnd;
 
 use basm::lex::Advance;
-// use basm::lex::{LexOutput, LineKind, Span};
+use basm::Line;
 use tower_lsp::lsp_types::{Range, SemanticToken, SemanticTokenModifier, SemanticTokenType};
 
 #[allow(unused)]
@@ -166,27 +166,35 @@ fn is_keyword(s: &str) -> bool {
 }
 
 impl super::Document {
+    // TODO: create proper item tallying
     pub(crate) fn semantic_tokens(&self, _range: Option<Range>) -> Vec<SemanticToken> {
         use basm::lex::Lexeme::*;
         let mut data = Tokenizer::default();
-
         let mut li = 0; // line items
-        let mut pl = 0; // prev line
 
-        for &ad in &self.lex {
-            li = if pl == ad.line { li + 1 } else { 0 };
+        for &ad in self.lex.iter() {
+            if let Eol(_) = ad.lex {
+                li = 0;
+            }
             let (kind, modi) = match ad.lex {
                 Ident if is_keyword(ad.span.slice(&self.source)) => (TokenKind::Keyword, 0),
-                Ident if li == 0 => (TokenKind::Function, 0),
-                Ident => (TokenKind::Variable, 0),
+                // TODO: check if line at ad.line has any errors before indexing
+                Ident => match (li, &self.basm.lines[ad.line as usize]) {
+                    (0, _) => (TokenKind::Function, 0),
+                    (1, Line::Variable { .. }) => (TokenKind::Type, 0),
+                    _ => (TokenKind::Variable, 0),
+                },
                 Str => (TokenKind::String, 0),
                 Colon | OpenBracket | CloseBracket => (TokenKind::Operator, 0),
                 Digit(_) => (TokenKind::Number, 0),
-                Eol(true) => (TokenKind::Comment, 0),
+                Eol(true) => {
+                    data.push(ad, TokenKind::Comment, 0);
+                    continue;
+                }
                 Whitespace | Comma | Eol(_) | Eof | Other => continue,
             };
+            li += 1;
             data.push(ad, kind, modi);
-            pl = ad.line;
         }
         data.inner
     }

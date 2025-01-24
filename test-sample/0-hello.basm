@@ -2,7 +2,7 @@ section data
     message db "Hello, World", 10 ; note the newline at the end
 
 section text
-    global _start ,a ,bc ,d
+    global _start
 
 _start:
     mov rax, 1 ; system call for write

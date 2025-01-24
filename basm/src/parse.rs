@@ -1,10 +1,12 @@
+use string_interner::DefaultSymbol;
+
 use crate::{
     lex::{
         Advance, BaseLexer,
         Lexeme::{self, *},
         Lexer, RecordedLexer, Span,
     },
-    Basm, Line, Section, SectionKind, Value,
+    Basm, Line, Value,
 };
 
 #[cfg(test)]
@@ -16,20 +18,22 @@ mod test;
 
 #[derive(Debug)]
 pub struct Parser<L, S> {
+    src: S,
     lexer: L,
-    basm: Basm<S>,
+    basm: Basm,
     errors: Vec<ParseError>,
 }
 
 impl<'a> Parser<BaseLexer<'a>, &'a str> {
     pub fn base(src: &'a str) -> Self {
         Self {
+            src,
             lexer: BaseLexer::new(src),
-            basm: Basm::new(src),
+            basm: Basm::default(),
             errors: Vec::new(),
         }
     }
-    pub fn parse(mut self) -> (Basm<&'a str>, Vec<ParseError>) {
+    pub fn parse(mut self) -> (Basm, Vec<ParseError>) {
         self.parse_inner();
         (self.basm, self.errors)
     }
@@ -37,12 +41,13 @@ impl<'a> Parser<BaseLexer<'a>, &'a str> {
 impl<'a> Parser<RecordedLexer<'a>, &'a str> {
     pub fn recorded(src: &'a str) -> Self {
         Self {
+            src,
             lexer: RecordedLexer::new(src),
-            basm: Basm::new(src),
+            basm: Basm::default(),
             errors: Vec::new(),
         }
     }
-    pub fn parse(mut self) -> (Basm<&'a str>, Vec<ParseError>, Vec<Advance>) {
+    pub fn parse(mut self) -> (Basm, Vec<ParseError>, Vec<Advance>) {
         self.parse_inner();
         (self.basm, self.errors, self.lexer.parts().1)
     }
@@ -55,84 +60,68 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
     fn parse_inner(&mut self) {
         loop {
             let ad = self.lexer.advance();
-            let e = match ad.lex {
-                Whitespace => Ok(()),
+            let r = match ad.lex {
+                Whitespace => continue,
                 Ident => match self.slice(ad.span) {
                     "section" => self.section(),
                     _ => self.parse_line(ad),
                 },
-                Eol(_) => {
-                    self.basm.lines.push(Line::NoOp);
-                    Ok(())
-                }
+                Eol(_) => Ok(Line::NoOp),
                 Eof => break,
                 _ => Err(self.expected(ad, "Ident | Eol | Eof")),
             };
-            if let Err(e) = e {
-                self.errors.push(e);
+            match r {
+                Ok(line) => self.basm.lines.push(line),
+                Err(e) => {
+                    self.basm.lines.push(Line::NoOp);
+                    self.errors.push(e)
+                }
             }
         }
     }
 
-    fn parse_line(&mut self, first: Advance) -> ParseResult<()> {
+    fn parse_line(&mut self, first: Advance) -> ParseResult<Line> {
         let second = self.peek_non_ws();
         if let Colon = second.lex {
             self.lexer.pop_peek();
             self.clear_line()?;
-            let address = self.current_address();
-            let key = self.slice(first.span);
-            let k = self.basm.si.get_or_intern(key);
-            if self.basm.labels.contains_key(&k) {
-                return Err(ParseErrorKind::DuplicateLabel(key.to_owned(), address).full(first));
-            } else {
-                self.basm.labels.insert(k, address);
-            }
-            return Ok(());
+            let name = self.symbol(first.span);
+            return Ok(Line::Label { name });
         }
         let Some(value) = self.value()? else {
-            self.basm.lines.push(Line::Instruction {
-                ins: first.span,
+            let line = Line::Instruction {
+                ins: self.symbol(first.span),
                 values: vec![],
-            });
-            return Ok(());
+            };
+            return Ok(line);
         };
         let (values, ins) = self.ins_or_var(value)?;
-        self.basm.lines.push(if ins {
+        let line = if ins {
             Line::Instruction {
-                ins: first.span,
+                ins: self.symbol(first.span),
                 values,
             }
         } else {
+            let name = self.symbol(first.span);
             Line::Variable {
-                name: first.span,
-                r#type: second.span,
+                name,
+                r#type: self.symbol(second.span),
                 values,
             }
-        });
-        Ok(())
+        };
+        Ok(line)
     }
 
-    fn section(&mut self) -> ParseResult<()> {
+    fn section(&mut self) -> ParseResult<Line> {
         let ad = self.non_ws();
         match ad.lex {
             Ident => (),
             Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(ad)),
-            _ => {
-                return Err(self.expected(ad, "Ident"));
-            }
+            _ => return Err(self.expected(ad, "Ident")),
         }
-        let kind = match self.slice(ad.span) {
-            "bss" => SectionKind::Bss,
-            "data" => SectionKind::Data,
-            "text" => SectionKind::Text,
-            _ => {
-                return Err(self.expected(ad, "'bss' | 'data' | 'text'"));
-            }
-        };
         self.clear_line()?;
-        let address = self.current_address();
-        self.basm.sections.push(Section { kind, address });
-        Ok(())
+        let name = self.symbol(ad.span);
+        Ok(Line::Section { name })
     }
 
     fn ins_or_var(&mut self, second: Value) -> ParseResult<(Vec<Value>, bool)> {
@@ -156,9 +145,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
             match ad.lex {
                 Comma => (),
                 Eol(_) | Eof => break Ok(values),
-                _ => {
-                    break Err(self.expected(ad, "Comma"));
-                }
+                _ => break Err(self.expected(ad, "Comma")),
             }
             let Some(value) = self.value()? else {
                 break Ok(values);
@@ -171,16 +158,19 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
         let ad = self.non_ws();
         match ad.lex {
             Eol(_) | Eof => Ok(None),
-            Ident => Ok(Some(Value::Ident(ad.span))),
+            Ident => Ok(Some(Value::Ident(self.symbol(ad.span)))),
             Str => Ok(Some(Value::String(
-                self.slice((ad.span.from + 1, ad.span.to - 1)).to_owned(),
+                self.symbol((ad.span.from + 1, ad.span.to - 1)).to_owned(),
             ))),
             Digit(base) => {
                 let n = u32::from_str_radix(self.slice(ad.span), base as u32)
                     .map_err(|e| ParseErrorKind::ParseIntError(e).full(ad))?;
                 Ok(Some(Value::Digit(base, n)))
             }
-            OpenBracket => Ok(Some(Value::Deref(self.after_bracket()?))),
+            OpenBracket => {
+                let span = self.after_bracket()?;
+                Ok(Some(Value::Deref(self.symbol(span))))
+            }
             _ => Err(self.expected(ad, "Ident | Str | Colon | OpenBracket | Digit")),
         }
     }
@@ -219,17 +209,21 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
         while !matches!(self.lexer.advance().lex, Eol(_) | Eof) {}
     }
 
-    fn current_address(&mut self) -> u16 {
-        u16::try_from(self.basm.lines.len()).expect("failed to convert line address to u16")
-    }
+    // fn current_address(&mut self) -> u16 {
+    //     u16::try_from(self.basm.lines.len()).expect("failed to convert line address to u16")
+    // }
 
     fn expected(&mut self, ad: Advance, expected: impl Into<String>) -> ParseError {
         self.kill_line();
         ParseErrorKind::Expected(expected.into()).full(ad)
     }
 
+    fn symbol(&mut self, span: impl Into<Span>) -> DefaultSymbol {
+        self.basm.si.get_or_intern(self.slice(span))
+    }
+
     fn slice(&self, span: impl Into<Span>) -> &'a str {
-        span.into().slice(self.basm.src)
+        span.into().slice(self.src)
     }
 
     fn after_bracket(&mut self) -> ParseResult<Span> {
@@ -238,7 +232,6 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
             Ident => (),
             Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(ident)),
             _ => {
-                self.kill_line();
                 return Err(self.expected(ident, "Ident"));
             }
         }
@@ -247,16 +240,12 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
             CloseBracket => (),
             Eol(_) | Eof => return Err(ParseErrorKind::InputEnd.full(close)),
             _ => {
-                self.kill_line();
                 return Err(self.expected(close, "CloseBracket"));
             }
         }
         Ok(ident.span)
     }
 }
-
-// TODO: improve errors.
-// make them usable in the lsp
 
 pub type ParseResult<T> = Result<T, ParseError>;
 

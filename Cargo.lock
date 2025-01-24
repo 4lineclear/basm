@@ -77,7 +77,6 @@ dependencies = [
 name = "basm"
 version = "0.0.1"
 dependencies = [
- "ahash",
  "expect-test",
  "string-interner",
 ]
@@ -88,6 +87,7 @@ version = "0.1.0"
 dependencies = [
  "basm",
  "expect-test",
+ "tracing",
 ]
 
 [[package]]
