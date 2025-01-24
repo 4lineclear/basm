@@ -254,6 +254,7 @@ fn hello_world() {
         include_str!("../../../test-sample/0-hello.asm"),
         expect![[r#"
             output:
+            NoOp: 
             Section: data
             Variable: message db "Hello, World", 10
             NoOp: 

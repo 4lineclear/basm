@@ -1,7 +1,5 @@
 use std::str::Chars;
 
-// TODO: create float lexing
-
 // TODO: create a testing system that is synchronized between
 // the lexing testing and the lsp's semantic token testing.
 
@@ -135,7 +133,7 @@ impl<'a> RecordedLexer<'a> {
     }
 }
 
-impl<'a> Lexer for RecordedLexer<'a> {
+impl Lexer for RecordedLexer<'_> {
     fn pop_peek(&mut self) -> Option<Advance> {
         self.base.pop_peek()
     }
@@ -205,7 +203,6 @@ impl<'a> BaseLexer<'a> {
         }
     }
 
-    // TODO: return struct instead of tuple
     fn advance(&mut self) -> Advance {
         if let Some(prev) = self.prev.take() {
             return prev;

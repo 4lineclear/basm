@@ -1,3 +1,4 @@
+; NOTE: file used for testing; never touch
 section data
     message db "Hello, World", 10 ; note the newline at the end
 

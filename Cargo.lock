@@ -85,6 +85,7 @@ dependencies = [
 name = "basm-fmt"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "basm",
  "expect-test",
  "tracing",

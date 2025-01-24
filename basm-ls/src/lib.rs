@@ -91,6 +91,7 @@ impl Document {
     }
     // TODO: add partial & delta semantic token changes
     fn diagnostics(&self) -> Vec<Diagnostic> {
+        // TODO: merge errors
         self.errors
             .iter()
             .map(|e| {

@@ -1,5 +1,4 @@
-use std::{collections::HashSet, usize};
-
+use ahash::AHashSet;
 use basm::{
     lex::{Advance, Lexeme, Span},
     parse::ParseError,
@@ -15,6 +14,9 @@ mod test;
 pub struct Edit {
     pub line: u32,
     pub offset: u32,
+    /// span excludes offset
+    ///
+    /// to get the actual byte position, add offset
     pub span: Span,
     pub text: String,
 }
@@ -65,7 +67,7 @@ struct Formatter<'a> {
     lex: &'a [Advance],
     fmt: &'a FmtContext,
     src: &'a str,
-    err: HashSet<u32>,
+    err: AHashSet<u32>,
     out: Vec<Edit>,
 }
 
@@ -122,7 +124,7 @@ impl Formatter<'_> {
         let src = post_semi.slice(self.src);
         if check_space(src) {
             let trim_start = src.trim_start();
-            if trim_start.len() != 0 {
+            if !trim_start.is_empty() {
                 let mut span = post_semi;
                 span.to -= trim_start.len() as u32;
                 self.out.push(Edit::space(Advance { span, ..eol }, 1));
@@ -199,15 +201,15 @@ fn check_space(src: &str) -> bool {
     src.next().is_some_and(char::is_whitespace)
 }
 
-pub fn fmt<'a>(
+pub fn fmt(
     basm: &Basm,
     lex: &[Advance],
     src: &str,
     errors: &[ParseError],
     fmt: &FmtContext,
 ) -> Vec<Edit> {
-    let err: HashSet<u32> = errors.iter().map(|s| s.advance().line).collect();
-    println!("{errors:#?}");
+    // NOTE: consider treating lines with errors as normal lines(ins & var lines)
+    let err: AHashSet<u32> = errors.iter().map(|s| s.advance().line).collect();
     Formatter {
         basm,
         lex,
@@ -218,4 +220,26 @@ pub fn fmt<'a>(
     }
     .fmt()
     .out
+}
+
+// TODO: detect overlapping ranges(which won't work)
+pub fn apply_fmt(src: &str) -> String {
+    fn create_fmt(src: &str) -> Vec<Edit> {
+        use basm::parse::Parser;
+        let (basm, errors, lex) = Parser::recorded(&src).parse();
+        let mut fmt = fmt(&basm, &lex, &src, &errors, &Default::default());
+        fmt.sort_unstable_by_key(|e| (e.line, e.span));
+        return fmt;
+    }
+    let mut out = String::with_capacity(src.len());
+    let mut p = 0;
+    for mut e in create_fmt(&src) {
+        e.span.from += e.offset;
+        e.span.to += e.offset;
+        out.push_str(&src[p as usize..e.span.from as usize]);
+        out.push_str(&e.text);
+        p = e.span.to;
+    }
+    out.push_str(&src[p as usize..]);
+    out
 }
