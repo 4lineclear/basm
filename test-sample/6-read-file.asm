@@ -6,13 +6,10 @@ SYS_CLOSE       equ 3
 SYS_EXIT        equ 60
 EXIT_SUCCESS    equ 0
 
-section bss
     text resb 18
 
-section data
     filename db "justfile", 0
 
-section text
     global _start
 
 _start:

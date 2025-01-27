@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-string-interner = "0.18"
+string-interner = { workspace = true }
 # thiserror = "2.0"
 # ahash = { workspace = true }
 # unicode
@@ -18,5 +18,4 @@ string-interner = "0.18"
 # indexmap = "2.6"
 
 [dev-dependencies]
-# pretty_assertions = "1.4"
-expect-test = "1.5"
+expect-test = { workspace = true }

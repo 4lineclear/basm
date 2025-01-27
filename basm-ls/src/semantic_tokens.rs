@@ -162,7 +162,7 @@ impl Tokenizer {
 }
 
 fn is_keyword(s: &str) -> bool {
-    matches!(s, "global" | "section")
+    matches!(s, "global")
 }
 
 impl super::Document {

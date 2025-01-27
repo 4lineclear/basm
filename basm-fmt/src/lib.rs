@@ -80,7 +80,7 @@ impl Formatter<'_> {
     }
 
     fn fmt_line(&mut self, lex: &[Advance]) {
-        if lex.len() < 2 {
+        if lex.len() < 1 {
             return;
         }
         if self.err.contains(&lex[0].line) {
@@ -88,17 +88,21 @@ impl Formatter<'_> {
         }
         let first = lex[0];
         let eol = lex[lex.len() - 1];
-        if Lexeme::Eof == first.lex {
-            return;
-        }
         let Lexeme::Eol(comment) = eol.lex else {
             return;
         };
+        if Lexeme::Eof == first.lex || lex.len() < 2 {
+            if comment {
+                self.in_comment(eol);
+            }
+            return;
+        }
         let line = &self.basm.lines[first.line as usize];
         match line {
             Line::NoOp => self.fmt_noop(lex),
-            Line::Section { .. } | Line::Label { .. } => self.fmt_kw(lex),
-            Line::Instruction { .. } | Line::Variable { .. } => self.fmt_norm(lex),
+            Line::Label { .. } => self.fmt_label(lex),
+            Line::Global { .. } | Line::Variable { .. } => self.fmt_unpadded(lex),
+            Line::Instruction { .. } => self.fmt_instruction(lex),
         }
         let slast = lex[lex.len() - 2];
 
@@ -137,6 +141,7 @@ impl Formatter<'_> {
             self.out.push(Edit::delete(Advance { span, ..eol }));
         }
     }
+
     fn fmt_noop(&mut self, lex: &[Advance]) {
         use Lexeme::*;
         let first = lex[0];
@@ -145,16 +150,29 @@ impl Formatter<'_> {
         }
     }
 
-    fn fmt_kw(&mut self, lex: &[Advance]) {
+    fn fmt_label(&mut self, lex: &[Advance]) {
         use Lexeme::*;
         let first = lex[0];
         if Whitespace == first.lex {
             self.out.push(Edit::delete(first));
         }
-        self.check_ws_range(lex);
+        if lex.len() > 2 {
+            self.check_ws_range(lex);
+        }
     }
 
-    fn fmt_norm(&mut self, lex: &[Advance]) {
+    fn fmt_unpadded(&mut self, lex: &[Advance]) {
+        use Lexeme::*;
+        let first = lex[0];
+        if Whitespace == first.lex {
+            self.out.push(Edit::delete(first));
+        }
+        if lex.len() > 2 {
+            self.check_ws_range(lex);
+        }
+    }
+
+    fn fmt_instruction(&mut self, lex: &[Advance]) {
         use Lexeme::*;
         let first = lex[0];
         if Whitespace != first.lex {
@@ -164,10 +182,9 @@ impl Formatter<'_> {
         } else if first.span.len() != self.fmt.tab_size {
             self.out.push(Edit::space(first, self.fmt.tab_size));
         }
-        if lex.len() < 3 {
-            return;
+        if lex.len() > 2 {
+            self.check_ws_range(lex);
         }
-        self.check_ws_range(lex);
     }
 
     fn check_ws_range(&mut self, lex: &[Advance]) {

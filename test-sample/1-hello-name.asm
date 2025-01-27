@@ -1,14 +1,11 @@
-section data
     opening db "What is your name?", 10
     opening_len equ $-opening
 
     hello db "Hello, "
     hello_len equ $-hello
 
-section bss
     name resb 16
 
-section text
     global _start
 
 _start:

@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 basm = { path = "../basm/" }
+ahash = { workspace = true }
+string-interner = { workspace = true }
+
+
+[dev-dependencies]
+expect-test = { workspace = true }

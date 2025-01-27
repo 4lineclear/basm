@@ -1,9 +1,7 @@
-section data
     digit db 0
     comma db ","
     nl db 10
 
-section text
     global _start
 
 _start:

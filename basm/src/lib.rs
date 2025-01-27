@@ -14,7 +14,7 @@ pub struct Basm {
 #[derive(Debug)]
 pub enum Line {
     NoOp,
-    Section {
+    Global {
         name: DefaultSymbol,
     },
     Label {
@@ -31,12 +31,12 @@ pub enum Line {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Deref(DefaultSymbol),
     Ident(DefaultSymbol),
     String(DefaultSymbol),
-    Digit(DigitBase, u32),
+    Digit(DigitBase, u16),
 }
 
 pub use self::lex::DigitBase;

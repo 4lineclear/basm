@@ -110,7 +110,10 @@ dependencies = [
 name = "basm-vm"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "basm",
+ "expect-test",
+ "string-interner",
 ]
 
 [[package]]

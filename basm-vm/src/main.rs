@@ -7,8 +7,17 @@ fn main() {
         }
         Err(errs) => {
             let mut o = "".to_owned();
-            for err in errs {
-                o.push_str(&err.to_string());
+            match errs {
+                basm_vm::VmError::ParseError(errs) => {
+                    for err in errs {
+                        o.push_str(&err.to_string());
+                    }
+                }
+                basm_vm::VmError::DecodeError(errs) => {
+                    for err in errs {
+                        o.push_str(&format!("{err:?}"));
+                    }
+                }
             }
             println!("unable to run:{o}");
         }

@@ -1,9 +1,7 @@
 ; NOTE: file used for testing; never touch
-section   data
-    message db "Hello, World", 10  ; note the newline at the end
 
-section   text
-    global    _start
+message str "Hello, World", 10  ; note the newline at the end
+global  _start
 
 _start: 
     mov       rax, 1            ; system call for write

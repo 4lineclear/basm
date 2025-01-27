@@ -5,3 +5,6 @@ resolver = "2"
 [workspace.dependencies]
 ahash = "0.8"
 tracing = "0.1"
+string-interner = "0.18"
+expect-test = "1.5"
+# pretty_assertions = "1.4"

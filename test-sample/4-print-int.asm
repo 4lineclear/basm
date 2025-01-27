@@ -1,11 +1,8 @@
-section bss
     digit_buffer        resb 100    ; a buffer for digits.
     digit_buffer_pos    resb 8      ; hold the position
                                     ; held here since rcx changes with syscall
 
-section data
 
-section text
     global _start
 
 _start:

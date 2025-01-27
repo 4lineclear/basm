@@ -44,7 +44,7 @@ fn check(src: &str, expect: Expect) {
         .iter()
         .try_for_each(|line| match line {
             NoOp => writeln!(output, "NoOp: "),
-            Section { name } => writeln!(output, "Section: {}", sy(name)),
+            Global { name } => writeln!(output, "Global: {}", sy(name)),
             Label { name } => writeln!(output, "Label: {}", sy(name)),
             Instruction { ins, values } => {
                 writeln!(output, "Instruction: {}{}", sy(ins), vals(&basm, values))
@@ -72,12 +72,9 @@ fn check(src: &str, expect: Expect) {
 
 #[test]
 fn empty() {
-    check(
-        "",
-        expect![[r#"
+    check("", expect![[r#"
         output:
-    "#]],
-    );
+    "#]]);
 }
 #[test]
 fn multi_empty() {
@@ -97,8 +94,8 @@ fn empty_ws() {
     check(
         "\t\t    \t     \t ",
         expect![[r#"
-        output:
-    "#]],
+            output:
+        "#]],
     );
 }
 #[test]
@@ -197,22 +194,6 @@ l1      :
     );
 }
 #[test]
-fn section() {
-    check(
-        "\
-section data one
-section bss
-section text",
-        expect![[r#"
-            output:
-            NoOp: 
-            Section: bss
-            Section: text
-            unexpected input found at: 0:13:16. expected Whitespace but got Ident
-        "#]],
-    );
-}
-#[test]
 fn decimal() {
     check(
         "\
@@ -255,11 +236,9 @@ fn hello_world() {
         expect![[r#"
             output:
             NoOp: 
-            Section: data
-            Variable: message db "Hello, World", 10
             NoOp: 
-            Section: text
-            Instruction: global _start
+            Variable: message str "Hello, World", 10
+            Global: _start
             NoOp: 
             Label: _start
             Instruction: mov rax, 1
@@ -279,13 +258,11 @@ fn print_any() {
         include_str!("../../../test-sample/3-print-any.asm"),
         expect![[r#"
             output:
-            Section: data
-            Variable: hello_world db "Hello, World!", 10, 0
-            Variable: whats_up db "What's up", 10, 0
-            Variable: long_text db "this is a longer line of text.", 10, 0
+            Variable: hello_world str "Hello, World!", 10, 0
+            Variable: whats_up str "What's up", 10, 0
+            Variable: long_text str "this is a longer line of text.", 10, 0
             NoOp: 
-            Section: text
-            Instruction: global _start
+            Global: _start
             NoOp: 
             Label: _start
             Instruction: mov rax, hello_world
@@ -327,15 +304,12 @@ fn print_int() {
         include_str!("../../../test-sample/4-print-int.asm"),
         expect![[r#"
             output:
-            Section: bss
             Variable: digit_buffer resb 100
             Variable: digit_buffer_pos resb 8
             NoOp: 
             NoOp: 
-            Section: data
             NoOp: 
-            Section: text
-            Instruction: global _start
+            Global: _start
             NoOp: 
             Label: _start
             Instruction: mov rax, 1337
@@ -478,7 +452,6 @@ fn colon_other() {
 label: : :
 var var var: : :
 var var \"var\", 10, 0: : :
-section section: : :
 : : : ;empty!
 ",
         expect![[r#"
@@ -487,12 +460,10 @@ section section: : :
             NoOp: 
             NoOp: 
             NoOp: 
-            NoOp: 
             unexpected input found at: 0:7:8. expected Whitespace but got Colon
             unexpected input found at: 1:11:12. expected Comma but got Colon
             unexpected input found at: 2:20:21. expected Comma but got Colon
-            unexpected input found at: 3:15:16. expected Whitespace but got Colon
-            unexpected input found at: 4:0:1. expected Ident | Eol | Eof but got Colon
+            unexpected input found at: 3:0:1. expected Ident | Eol | Eof but got Colon
         "#]],
     );
 }
@@ -504,7 +475,6 @@ fn rand_other() {
 label: `~]]./\\
 var var var `~]]./\\
 var var \"var\", 10, 0`~]]./\\
-section section`~]]./\\
  `~]]./\\;empty!
 ",
         expect![[r#"
@@ -513,12 +483,10 @@ section section`~]]./\\
             NoOp: 
             NoOp: 
             NoOp: 
-            NoOp: 
             unexpected input found at: 0:7:9. expected Whitespace but got Other
             unexpected input found at: 1:12:14. expected Comma but got Other
             unexpected input found at: 2:20:22. expected Comma but got Other
-            unexpected input found at: 3:15:17. expected Whitespace but got Other
-            unexpected input found at: 4:1:3. expected Ident | Eol | Eof but got Other
+            unexpected input found at: 3:1:3. expected Ident | Eol | Eof but got Other
         "#]],
     );
 }

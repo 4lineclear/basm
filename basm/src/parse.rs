@@ -12,9 +12,9 @@ use crate::{
 #[cfg(test)]
 mod test;
 
-// TODO: improve spans
+// TODO: include spans into the resulting output
 
-// TODO: replace breaks with error propagation
+// TODO: create new span type that includes line & offset.
 
 #[derive(Debug)]
 pub struct Parser<L, S> {
@@ -63,7 +63,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
             let r = match ad.lex {
                 Whitespace => continue,
                 Ident => match self.slice(ad.span) {
-                    "section" => self.section(),
+                    "global" => self.global(),
                     _ => self.parse_line(ad),
                 },
                 Eol(_) => Ok(Line::NoOp),
@@ -112,7 +112,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
         Ok(line)
     }
 
-    fn section(&mut self) -> ParseResult<Line> {
+    fn global(&mut self) -> ParseResult<Line> {
         let ad = self.non_ws();
         match ad.lex {
             Ident => (),
@@ -121,7 +121,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
         }
         self.clear_line()?;
         let name = self.symbol(ad.span);
-        Ok(Line::Section { name })
+        Ok(Line::Global { name })
     }
 
     fn ins_or_var(&mut self, second: Value) -> ParseResult<(Vec<Value>, bool)> {
@@ -163,7 +163,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
                 self.symbol((ad.span.from + 1, ad.span.to - 1)).to_owned(),
             ))),
             Digit(base) => {
-                let n = u32::from_str_radix(self.slice(ad.span), base as u32)
+                let n = u16::from_str_radix(self.slice(ad.span), base as u32)
                     .map_err(|e| ParseErrorKind::ParseIntError(e).full(ad))?;
                 Ok(Some(Value::Digit(base, n)))
             }

@@ -6,12 +6,10 @@ SYS_CLOSE       equ 3
 SYS_EXIT        equ 60
 EXIT_SUCCESS    equ 0
 
-section data
     filename    db "asm-file-write.txt", 0
     text        db "This was written from assembly!"
     text_len    equ $-text
 
-section text
     global _start
 
 _start:

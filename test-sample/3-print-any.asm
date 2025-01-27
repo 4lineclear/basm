@@ -1,9 +1,7 @@
-section data
-    hello_world db "Hello, World!", 10, 0
-    whats_up db "What's up", 10, 0
-    long_text db "this is a longer line of text.", 10, 0
+    hello_world str "Hello, World!", 10, 0
+    whats_up str "What's up", 10, 0
+    long_text str "this is a longer line of text.", 10, 0
 
-section text
     global _start
 
 _start:

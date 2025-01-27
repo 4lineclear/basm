@@ -9,5 +9,4 @@ ahash = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-# pretty_assertions = "1.4"
-expect-test = "1.5"
+expect-test = { workspace = true }
