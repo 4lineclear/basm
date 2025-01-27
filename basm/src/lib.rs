@@ -2,6 +2,7 @@ use string_interner::{DefaultBackend, DefaultSymbol, StringInterner};
 
 pub mod lex;
 pub mod parse;
+pub mod span;
 
 pub type Address = u16;
 

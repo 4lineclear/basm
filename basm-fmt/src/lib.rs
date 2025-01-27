@@ -1,7 +1,8 @@
 use ahash::AHashSet;
 use basm::{
-    lex::{Advance, Lexeme, Span},
+    lex::{Advance, Lexeme},
     parse::ParseError,
+    span::Span,
     Basm, Line,
 };
 
@@ -226,7 +227,7 @@ pub fn fmt(
     fmt: &FmtContext,
 ) -> Vec<Edit> {
     // NOTE: consider treating lines with errors as normal lines(ins & var lines)
-    let err: AHashSet<u32> = errors.iter().map(|s| s.advance().line).collect();
+    let err: AHashSet<u32> = errors.iter().map(|s| s.span().line).collect();
     Formatter {
         basm,
         lex,

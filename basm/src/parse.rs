@@ -4,8 +4,9 @@ use crate::{
     lex::{
         Advance, BaseLexer,
         Lexeme::{self, *},
-        Lexer, RecordedLexer, Span,
+        Lexer, RecordedLexer,
     },
+    span::{FullSpan, Span},
     Basm, Line, Value,
 };
 
@@ -215,7 +216,7 @@ impl<'a, L: Lexer> Parser<L, &'a str> {
 
     fn expected(&mut self, ad: Advance, expected: impl Into<String>) -> ParseError {
         self.kill_line();
-        ParseErrorKind::Expected(expected.into()).full(ad)
+        ParseErrorKind::Expected(ad.lex, expected.into()).full(ad)
     }
 
     fn symbol(&mut self, span: impl Into<Span>) -> DefaultSymbol {
@@ -251,20 +252,20 @@ pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Debug)]
 pub struct ParseError {
-    ad: Advance,
+    span: FullSpan,
     kind: ParseErrorKind,
 }
 
 impl ParseError {
-    pub fn advance(&self) -> Advance {
-        self.ad
+    pub fn span(&self) -> FullSpan {
+        self.span
     }
     pub fn line(&self) -> u32 {
-        self.ad.line
+        self.span.line
     }
 
     pub fn offset(&self) -> u32 {
-        self.ad.offset
+        self.span.offset
     }
 
     pub fn kind(&self) -> &ParseErrorKind {
@@ -274,31 +275,34 @@ impl ParseError {
 
 #[derive(Debug)]
 pub enum ParseErrorKind {
-    Expected(String),
+    Expected(Lexeme, String),
     ParseIntError(std::num::ParseIntError),
     InputEnd,
     DuplicateLabel(String, u16),
 }
 
 impl ParseErrorKind {
-    fn full(self, ad: Advance) -> ParseError {
-        ParseError { ad, kind: self }
+    fn full(
+        self,
+        Advance {
+            line, offset, span, ..
+        }: Advance,
+    ) -> ParseError {
+        ParseError {
+            span: FullSpan { span, line, offset },
+            kind: self,
+        }
     }
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ParseErrorKind::*;
-        let Advance {
-            lex,
-            line,
-            offset,
-            span,
-        } = self.ad;
+        let FullSpan { line, offset, span } = self.span;
         let from = span.from - offset;
         let to = span.to - offset;
         match &self.kind {
-            Expected(e) => {
+            Expected(lex, e) => {
                 writeln!(
                     f,
                     "unexpected input found at: {line}:{from}:{to}. expected {e} but got {:?}",

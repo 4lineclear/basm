@@ -3,6 +3,7 @@ use std::sync::Arc;
 use basm::{
     lex::Advance,
     parse::{ParseError, Parser},
+    span::FullSpan,
     Basm,
 };
 use basm_fmt::FmtContext;
@@ -37,10 +38,9 @@ pub struct Backend {
     pub forms: DashMap<Url, Document>,
 }
 
-fn line_range(ad: Advance) -> Range {
-    let line = ad.line;
-    let from = ad.span.from - ad.offset;
-    let to = ad.span.to - ad.offset;
+fn line_range(FullSpan { line, offset, span }: FullSpan) -> Range {
+    let from = span.from - offset;
+    let to = span.to - offset;
     Range {
         start: Position {
             line,
@@ -95,7 +95,7 @@ impl Document {
         self.errors
             .iter()
             .map(|e| {
-                let range = line_range(e.advance());
+                let range = line_range(e.span());
                 let message = e.to_string();
                 Diagnostic {
                     range,

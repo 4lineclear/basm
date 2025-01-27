@@ -1,5 +1,5 @@
 use ahash::{AHashMap, AHashSet};
-use basm::parse::{ParseError, Parser};
+use basm::parse::ParseError;
 use basm::{Address, Value};
 use string_interner::symbol::SymbolU32;
 use string_interner::{DefaultBackend, DefaultSymbol, StringInterner};
