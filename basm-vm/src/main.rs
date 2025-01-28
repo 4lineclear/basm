@@ -1,11 +1,14 @@
-fn main() {
+use std::process::ExitCode;
+
+fn main() -> ExitCode {
     let src = read_in().expect("failed to read stdin");
     match basm_vm::BasmVM::parse(&src) {
         Ok(mut vm) => {
             println!("running:");
-            println!("{:#?}", vm.reg);
-            vm.run();
-            println!("{:#?}", vm.reg);
+            // println!("{:#?}", vm.reg);
+            let ec = vm.run();
+            // println!("{:#?}", vm.reg);
+            ec
         }
         Err(errs) => {
             let mut o = "".to_owned();
@@ -27,6 +30,7 @@ fn main() {
                 }
             }
             println!("unable to run:{o}");
+            ExitCode::FAILURE
         }
     }
 }

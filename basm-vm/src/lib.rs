@@ -1,3 +1,5 @@
+use std::process::ExitCode;
+
 use ahash::{AHashMap, AHashSet};
 use string_interner::symbol::SymbolU32;
 use string_interner::{DefaultBackend, DefaultSymbol, StringInterner};
@@ -122,21 +124,18 @@ impl BasmVM {
         encode::encode(code, &mut mem);
         Ok(Self { flag: 0, reg, mem })
     }
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> ExitCode {
         for seq in decode::decode(&self.mem).collect::<Vec<_>>() {
-            println!("{seq:?}");
+            // println!("{seq:?}");
             use Sequence::*;
             #[allow(unused)]
             match seq {
-                Mov(LocThenVal(loc, val)) => {
-                    println!("{loc:?} {val:?}");
-                    *self.loc_mut(loc) = self.value(val);
-                }
-                Add(lv) => (),
-                Sub(lv) => (),
-                Xor(lv) => (),
-                And(lv) => (),
-                Or(lv) => (),
+                Mov(LocThenVal(loc, val)) => *self.loc_mut(loc) = self.value(val),
+                Add(LocThenVal(loc, val)) => *self.loc_mut(loc) += self.value(val),
+                Sub(LocThenVal(loc, val)) => *self.loc_mut(loc) -= self.value(val),
+                Xor(LocThenVal(loc, val)) => *self.loc_mut(loc) ^= self.value(val),
+                And(LocThenVal(loc, val)) => *self.loc_mut(loc) &= self.value(val),
+                Or(LocThenVal(loc, val)) => *self.loc_mut(loc) |= self.value(val),
                 Push(val) => (),
                 Pop(l) => (),
                 Call(loc) => (),
@@ -145,10 +144,34 @@ impl BasmVM {
                 Inc(l) => (),
                 Dec(l) => (),
                 Cmp(v1, v2) => (),
-                SysCall => (),
+                SysCall => {
+                    match self.reg(Register::RAX) {
+                        // sys_write
+                        0x01 => {
+                            let fd = self.reg(Register::RDI);
+                            let buf = self.reg(Register::RSI);
+                            let count = self.reg(Register::RDX);
+                            let start = buf as usize;
+                            let end = start + count as usize / 2;
+
+                            let bytes: Vec<_> = self.mem[start..end]
+                                .iter()
+                                .flat_map(|&w| [(w >> 8) as u8, w as u8])
+                                .chain((count % 2 != 0).then(|| self.mem(end as u16) as u8))
+                                .collect();
+                            print!("{}", String::from_utf8_lossy(&bytes));
+                        }
+                        // sys_exit
+                        0x3C => {
+                            return ExitCode::from(self.reg(Register::RDI) as u8);
+                        }
+                        _ => panic!(),
+                    }
+                }
                 Ret => (),
             }
         }
+        ExitCode::default()
     }
 
     fn flag(&self, flag: Flag) -> bool {
