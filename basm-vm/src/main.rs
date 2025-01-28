@@ -1,9 +1,11 @@
 fn main() {
     let src = read_in().expect("failed to read stdin");
     match basm_vm::BasmVM::parse(&src) {
-        Ok(vm) => {
+        Ok(mut vm) => {
             println!("running:");
-            vm.run()
+            println!("{:#?}", vm.reg);
+            vm.run();
+            println!("{:#?}", vm.reg);
         }
         Err(errs) => {
             let mut o = "".to_owned();
@@ -13,9 +15,14 @@ fn main() {
                         o.push_str(&err.to_string());
                     }
                 }
-                basm_vm::VmError::DecodeError(errs) => {
+                basm_vm::VmError::ReparseError(errs) => {
                     for err in errs {
-                        o.push_str(&format!("{err:?}"));
+                        o.push_str(&format!("\n{err:?}"));
+                    }
+                }
+                basm_vm::VmError::EncodeError(errs) => {
+                    for err in errs {
+                        o.push_str(&format!("\n{err:?}"));
                     }
                 }
             }

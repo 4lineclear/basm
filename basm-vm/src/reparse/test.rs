@@ -23,7 +23,7 @@ fn check(src: &str, expect: Expect) {
             labels,
         },
         errors,
-    ) = super::decode(src);
+    ) = super::reparse(src);
     let output = format!(
         "output:\nerrors:{}\nlabels:{}\nglobals:{}\nvariables:{}\nsequences:{}",
         match errors {

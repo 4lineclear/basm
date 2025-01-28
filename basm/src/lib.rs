@@ -42,7 +42,7 @@ pub enum Value {
 
 pub use self::lex::DigitBase;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Either<A, B> {
     A(A),
     B(B),
