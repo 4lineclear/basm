@@ -30,6 +30,7 @@ pub fn decode(mem: &[u16]) -> impl Iterator<Item = Sequence> + '_ {
             let &[ins, v1, v2, _] = word else {
                 return None;
             };
+            // println!("{ins:#06x} {v1:#06x} {v2:#06x}");
             decode_seq(ins, v1, v2)
         })
 }
@@ -38,6 +39,7 @@ fn loc(sq: &SeqCode, v: u16) -> Option<Loc> {
     if !sq.is_loc() {
         return None;
     }
+    // println!("here! {sq:?} -> {v}");
     let loc = Loc {
         location: if sq.is_reg() {
             LocKind::Reg(Register::try_from(v).ok()?)
@@ -67,6 +69,7 @@ pub fn decode_seq(ins: u16, v1: u16, v2: u16) -> Option<Sequence> {
     let sq = ins as u8;
     let sq1 = SeqCode(sq >> 4);
     let sq2 = SeqCode(sq & 0x00ff);
+    // println!("{v1:?} {v2:?}");
 
     Some(match ins >> 8 {
         0x01 => Mov(loc_then_val(&sq1, &sq2, v1, v2)?),
@@ -75,13 +78,13 @@ pub fn decode_seq(ins: u16, v1: u16, v2: u16) -> Option<Sequence> {
         0x04 => Xor(loc_then_val(&sq1, &sq2, v1, v2)?),
         0x05 => And(loc_then_val(&sq1, &sq2, v1, v2)?),
         0x06 => Or(loc_then_val(&sq1, &sq2, v1, v2)?),
-        0x07 => Push(value(&sq1, v1)?),
-        0x08 => Pop(loc(&sq1, v1)?),
-        0x09 => Call(loc(&sq1, v1)?),
-        0x0a => Je(loc(&sq1, v1)?),
-        0x0b => Jne(loc(&sq1, v1)?),
-        0x0c => Inc(loc(&sq1, v1)?),
-        0x0d => Dec(loc(&sq1, v1)?),
+        0x07 => Push(value(&sq2, v1)?),
+        0x08 => Pop(loc(&sq2, v1)?),
+        0x09 => Call(loc(&sq2, v1)?),
+        0x0a => Je(loc(&sq2, v1)?),
+        0x0b => Jne(loc(&sq2, v1)?),
+        0x0c => Inc(loc(&sq2, v1)?),
+        0x0d => Dec(loc(&sq2, v1)?),
         0x0e => Cmp(value(&sq1, v1)?, value(&sq2, v2)?),
         0x0f => SysCall,
         0x10 => Ret,

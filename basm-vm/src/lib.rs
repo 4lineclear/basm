@@ -125,8 +125,8 @@ impl BasmVM {
         Ok(Self { flag: 0, reg, mem })
     }
     pub fn run(&mut self) -> ExitCode {
+        self.set_reg(Register::RSP, u16::MAX);
         for seq in decode::decode(&self.mem).collect::<Vec<_>>() {
-            // println!("{seq:?}");
             use Sequence::*;
             #[allow(unused)]
             match seq {
@@ -136,13 +136,29 @@ impl BasmVM {
                 Xor(LocThenVal(loc, val)) => *self.loc_mut(loc) ^= self.value(val),
                 And(LocThenVal(loc, val)) => *self.loc_mut(loc) &= self.value(val),
                 Or(LocThenVal(loc, val)) => *self.loc_mut(loc) |= self.value(val),
-                Push(val) => (),
-                Pop(l) => (),
+                Push(val) => {
+                    *self.reg_mut(Register::RSP) -= 1;
+                    *self.mem_mut(self.reg(Register::RSP)) = self.value(val);
+                    // println!(
+                    //     "{} {:#06x}",
+                    //     self.reg(Register::RSP),
+                    //     self.mem(self.reg(Register::RSP))
+                    // );
+                }
+                Pop(loc) => {
+                    *self.loc_mut(loc) = self.mem(self.reg(Register::RSP));
+                    *self.reg_mut(Register::RSP) += 1;
+                    // println!(
+                    //     "{} {:#06x}",
+                    //     self.reg(Register::RSP),
+                    //     self.mem(self.reg(Register::RSP))
+                    // );
+                }
                 Call(loc) => (),
-                Je(l) => (),
-                Jne(l) => (),
-                Inc(l) => (),
-                Dec(l) => (),
+                Je(loc) => (),
+                Jne(loc) => (),
+                Inc(loc) => (),
+                Dec(loc) => (),
                 Cmp(v1, v2) => (),
                 SysCall => {
                     match self.reg(Register::RAX) {
@@ -165,7 +181,7 @@ impl BasmVM {
                         0x3C => {
                             return ExitCode::from(self.reg(Register::RDI) as u8);
                         }
-                        _ => panic!(),
+                        code => panic!("sys call not handled yet: {code}"),
                     }
                 }
                 Ret => (),
@@ -174,16 +190,16 @@ impl BasmVM {
         ExitCode::default()
     }
 
-    fn flag(&self, flag: Flag) -> bool {
-        (self.flag & flag as u16) != 0
-    }
-    fn set_flag(&mut self, flag: Flag, set: bool) {
-        if set {
-            self.flag |= flag as u16;
-        } else {
-            self.flag &= !(flag as u16);
-        }
-    }
+    // fn flag(&self, flag: Flag) -> bool {
+    //     (self.flag & flag as u16) != 0
+    // }
+    // fn set_flag(&mut self, flag: Flag, set: bool) {
+    //     if set {
+    //         self.flag |= flag as u16;
+    //     } else {
+    //         self.flag &= !(flag as u16);
+    //     }
+    // }
     fn reg(&self, reg: Register) -> u16 {
         self.reg[reg as usize]
     }
@@ -218,6 +234,7 @@ impl BasmVM {
         }
     }
     fn value(&mut self, val: Value) -> u16 {
+        // println!("{val:#?}");
         match val {
             Value::Loc(loc) => self.loc(loc),
             Value::Word(v) => v,

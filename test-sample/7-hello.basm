@@ -1,0 +1,21 @@
+; NOTE: file used for testing; never touch
+
+message str "Hello, World", 10 ; note the newline at the end
+global _start
+
+_start:
+    push 60
+    push 13
+    push message
+    push 1
+    push 1
+
+    pop rax
+    pop rdi
+    pop rsi
+    pop rdx
+    syscall
+
+    pop rax
+    xor rdi, rdi
+    syscall
